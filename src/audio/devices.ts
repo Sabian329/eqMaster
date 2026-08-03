@@ -47,7 +47,7 @@ export async function enumerateAudioDevices(): Promise<DeviceListResult> {
 
 export async function requestMicrophonePermission(): Promise<void> {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('Przeglądarka nie udostępnia mikrofonu.');
+    throw new Error('The browser does not provide microphone access.');
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -71,7 +71,7 @@ export async function chooseOutputDevice(
 ): Promise<SelectedOutputDevice> {
   if (typeof navigator.mediaDevices?.selectAudioOutput !== 'function') {
     throw new Error(
-      'Ta przeglądarka nie udostępnia selektora wyjścia. Ustaw interfejs jako domyślne wyjście w ustawieniach dźwięku macOS.',
+      'This browser does not provide an output selector. Set your interface as the default output in macOS Sound settings.',
     );
   }
 
@@ -81,7 +81,7 @@ export async function chooseOutputDevice(
   return {
     deviceId: selected.deviceId,
     kind: selected.kind || 'audiooutput',
-    label: selected.label || 'Wybrane wyjście audio',
+    label: selected.label || 'Selected audio output',
   };
 }
 

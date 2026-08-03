@@ -193,7 +193,7 @@ function createSuggestions(curve: CurvePoint[]): Suggestion[] {
           deviation: item.deviation,
           gain,
           q: item.q,
-          note: 'Najpierw spróbuj redukcji. Ustaw szerokość filtra na podstawie wykresu i wykonaj pomiar kontrolny.',
+          note: 'Try a cut first. Set filter width based on the chart and run a verification measurement.',
         };
       }
 
@@ -204,7 +204,7 @@ function createSuggestions(curve: CurvePoint[]): Suggestion[] {
           deviation: item.deviation,
           gain: null,
           q: item.q,
-          note: 'Prawdopodobne wygaszenie pomieszczenia. Nie podbijaj mocno; sprawdź pozycję kolumny, subwoofera lub mikrofonu.',
+          note: 'Likely room cancellation. Do not boost heavily; check speaker, subwoofer, or microphone placement.',
         };
       }
 
@@ -215,7 +215,7 @@ function createSuggestions(curve: CurvePoint[]): Suggestion[] {
         deviation: item.deviation,
         gain,
         q: item.q,
-        note: 'Tylko ostrożne podbicie. Jeżeli efekt jest mały, pozostaw filtr wyłączony.',
+        note: 'Boost only with caution. If the effect is small, leave the filter disabled.',
       };
     });
 }
@@ -230,14 +230,14 @@ function analyze(
   smoothing: number,
   calibration: [number, number][],
 ): AnalysisResult {
-  if (recorded.length < 1024) throw new Error('Nagranie jest zbyt krótkie.');
+  if (recorded.length < 1024) throw new Error('Recording is too short.');
   if (sweepOffset < 0 || sweepOffset >= recorded.length) {
-    throw new Error('Nie udało się ustalić położenia sweepu w nagraniu.');
+    throw new Error('Could not locate the sweep in the recording.');
   }
 
   const n = nextPowerOfTwo(recorded.length);
   if (n > 4194304) {
-    throw new Error('Pomiar jest zbyt długi dla tej wersji aplikacji.');
+    throw new Error('Measurement is too long for this app version.');
   }
 
   const recordedReal = new Float32Array(n);
@@ -254,13 +254,13 @@ function analyze(
   }
 
   const available = Math.min(sweep.length, n - sweepOffset);
-  if (available <= 0) throw new Error('Sweep nie mieści się w buforze nagrania.');
+  if (available <= 0) throw new Error('Sweep does not fit in the recording buffer.');
   sweepReal.set(sweep.subarray(0, available), sweepOffset);
 
-  self.postMessage({ type: 'progress', value: 76, label: 'FFT sygnału referencyjnego…' });
+  self.postMessage({ type: 'progress', value: 76, label: 'Reference signal FFT…' });
   fft(sweepReal, sweepImag);
 
-  self.postMessage({ type: 'progress', value: 84, label: 'FFT nagrania…' });
+  self.postMessage({ type: 'progress', value: 84, label: 'Recording FFT…' });
   fft(recordedReal, recordedImag);
 
   const maxBin = n >> 1;
@@ -278,7 +278,7 @@ function analyze(
   self.postMessage({
     type: 'progress',
     value: 91,
-    label: 'Obliczanie odpowiedzi częstotliwościowej…',
+    label: 'Computing frequency response…',
   });
 
   for (let bin = 1; bin <= maxBin; bin++) {
@@ -334,7 +334,7 @@ function analyze(
   self.postMessage({
     type: 'progress',
     value: 97,
-    label: 'Wyszukiwanie pików i dołków…',
+    label: 'Finding peaks and dips…',
   });
   const suggestions = createSuggestions(curve);
 

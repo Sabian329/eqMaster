@@ -18,6 +18,10 @@ import type {
 import { buildPresetText } from '../utils/preset';
 import { downloadText, safePresetFilename } from '../utils/download';
 import { formatFrequency } from '../utils/format';
+import {
+  MEASUREMENT_PRESETS,
+  type MeasurementPresetId,
+} from '../config/measurementPresets';
 
 function getDeviceStatusMessage(
   mediaPermissionGranted: boolean,
@@ -29,29 +33,29 @@ function getDeviceStatusMessage(
   if (!mediaPermissionGranted && !permissionJustGranted) {
     return {
       message:
-        'Lista jest ograniczona przez prywatność przeglądarki. Kliknij „Pokaż wszystkie wejścia” i zaakceptuj dostęp do mikrofonu.',
+        'The device list is limited by browser privacy. Click “Show inputs” and allow microphone access.',
       type: 'warning',
     };
   }
   if (visibleInputCount === 0) {
     return {
       message:
-        'System zwrócił tylko alias wejścia domyślnego. Sprawdź, czy interfejs jest podłączony, czy Chrome ma dostęp do mikrofonu w ustawieniach macOS i uruchom stronę przez localhost/HTTPS.',
+        'The system returned only the default input alias. Check that your interface is connected, Chrome has microphone access in macOS settings, and the page is served over localhost/HTTPS.',
       type: 'bad',
     };
   }
   if (namesHidden) {
     return {
-      message: `Wykryto ${visibleInputCount} wejść i ${visibleOutputCount} wyjść, ale część nazw jest nadal ukryta. Spróbuj ponownie nadać dostęp albo odświeżyć stronę.`,
+      message: `Found ${visibleInputCount} inputs and ${visibleOutputCount} outputs, but some names are still hidden. Try granting access again or refresh the page.`,
       type: 'warning',
     };
   }
   const outputText =
     visibleOutputCount > 0
-      ? `${visibleOutputCount} wyjść`
-      : 'tylko domyślne wyjście systemowe';
+      ? `${visibleOutputCount} outputs`
+      : 'system default output only';
   return {
-    message: `Wykryto ${visibleInputCount} wejść oraz ${outputText}.`,
+    message: `Found ${visibleInputCount} inputs and ${outputText}.`,
     type: 'good',
   };
 }
@@ -66,7 +70,7 @@ export function useRoomEq() {
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [deviceStatus, setDeviceStatus] = useState({
     message:
-      'Przed udzieleniem dostępu przeglądarka może pokazywać wyłącznie urządzenia domyślne bez nazw.',
+      'Before permission is granted, the browser may show only default devices without names.',
     type: '' as DeviceStatusType,
   });
 
@@ -79,12 +83,14 @@ export function useRoomEq() {
   const [smoothing, setSmoothing] = useState(12);
   const [level, setLevel] = useState(-24);
   const [safetyCheck, setSafetyCheck] = useState(false);
+  const [activeMeasurementPresetId, setActiveMeasurementPresetId] =
+    useState<MeasurementPresetId>('room');
   const [calibration, setCalibration] = useState<[number, number][]>([]);
   const [calibrationStatus, setCalibrationStatus] = useState(
-    'Format: częstotliwość i korekta dB w dwóch kolumnach. Korekta jest dodawana do wyniku.',
+    'Format: frequency and dB correction in two columns. The correction is added to the result.',
   );
 
-  const [statusText, setStatusText] = useState('Gotowy');
+  const [statusText, setStatusText] = useState('Ready');
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
 
@@ -166,26 +172,26 @@ export function useRoomEq() {
     if (env.ready) {
       return {
         text: env.hasWorklet
-          ? 'Środowisko gotowe'
-          : 'Środowisko gotowe · tryb zgodności',
+          ? 'Environment ready'
+          : 'Environment ready · compatibility mode',
         color: 'var(--good)',
       };
     }
     const problems: string[] = [];
-    if (!env.secure) problems.push('wymagany HTTPS/localhost');
-    if (!env.hasMedia) problems.push('brak getUserMedia');
-    if (!env.hasAudio) problems.push('brak Web Audio API');
+    if (!env.secure) problems.push('HTTPS/localhost required');
+    if (!env.hasMedia) problems.push('getUserMedia unavailable');
+    if (!env.hasAudio) problems.push('Web Audio API unavailable');
     return { text: problems.join(' · '), color: 'var(--bad)' };
   }, [env]);
 
   const sinkHelp = useMemo(() => {
     if (env.supportsSink && env.supportsOutputPicker) {
-      return 'Możesz wybrać wyjście z listy albo użyć przycisku „Wybierz wyjście…”, aby nadać mu uprawnienie.';
+      return 'You can pick an output from the list or use the “Choose output” button to grant it permission.';
     }
     if (env.supportsSink) {
-      return 'Przeglądarka może ustawić wyjście z listy. Gdy lista jest pusta, ustaw interfejs jako domyślne wyjście macOS.';
+      return 'The browser can set output from the list. If the list is empty, set your interface as the macOS default output.';
     }
-    return 'Ta przeglądarka nie obsługuje wyboru wyjścia dla Web Audio. Użyte zostanie domyślne wyjście systemowe.';
+    return 'This browser does not support Web Audio output selection. The system default output will be used.';
   }, [env]);
 
   const measureEnabled =
@@ -197,18 +203,18 @@ export function useRoomEq() {
   );
 
   const handleRequestPermission = async () => {
-    setStatus('Oczekiwanie na zgodę na mikrofon…', 0);
+    setStatus('Waiting for microphone permission…', 0);
     try {
       await requestMicrophonePermission();
       setMediaPermissionGranted(true);
       await refreshDevices(true);
-      setStatus('Lista urządzeń została odblokowana', 0);
+      setStatus('Device list unlocked', 0);
     } catch (error) {
       const err = error as Error & { name?: string };
       const message =
         err.name === 'NotAllowedError'
-          ? 'Dostęp do mikrofonu został zablokowany. Zezwól na mikrofon dla localhost w ustawieniach Chrome i macOS.'
-          : err.message || 'Nie udało się uzyskać dostępu.';
+          ? 'Microphone access was blocked. Allow the microphone for localhost in Chrome and macOS settings.'
+          : err.message || 'Could not get access.';
       setStatus(message, 0);
       setDeviceStatus({ message, type: 'bad' });
       throw new Error(message);
@@ -221,22 +227,22 @@ export function useRoomEq() {
     setOutputDeviceId(selected.deviceId);
     await refreshDevices();
     setDeviceStatus({
-      message: `Wybrane wyjście: ${selected.label || 'urządzenie audio'}.`,
+      message: `Selected output: ${selected.label || 'audio device'}.`,
       type: 'good',
     });
-    setStatus('Wyjście audio zostało wybrane', 0);
+    setStatus('Audio output selected', 0);
   };
 
   const handleRefreshDevices = async () => {
     await refreshDevices();
-    setStatus('Lista urządzeń odświeżona', 0);
+    setStatus('Device list refreshed', 0);
   };
 
   const handleCalibrationFile = async (file: File | null) => {
     if (!file) {
       setCalibration([]);
       setCalibrationStatus(
-        'Format: częstotliwość i korekta dB w dwóch kolumnach. Korekta jest dodawana do wyniku.',
+        'Format: frequency and dB correction in two columns. The correction is added to the result.',
       );
       return;
     }
@@ -245,27 +251,27 @@ export function useRoomEq() {
       const text = await file.text();
       const points = parseCalibration(text);
       if (points.length < 2) {
-        throw new Error('Nie znaleziono co najmniej dwóch poprawnych punktów.');
+        throw new Error('Could not find at least two valid points.');
       }
 
       setCalibration(points);
       setCalibrationStatus(
-        `Wczytano ${points.length} punktów: ${formatFrequency(points[0][0])}–${formatFrequency(points[points.length - 1][0])}.`,
+        `Loaded ${points.length} points: ${formatFrequency(points[0][0])}–${formatFrequency(points[points.length - 1][0])}.`,
       );
     } catch (error) {
       setCalibration([]);
       const message = error instanceof Error ? error.message : String(error);
-      setCalibrationStatus(`Błąd pliku: ${message}`);
+      setCalibrationStatus(`File error: ${message}`);
     }
   };
 
   const handleStartMeter = async () => {
     await levelTestRef.current?.stop();
-    setStatus('Uruchamianie testu wejścia…', 0);
+    setStatus('Starting input test…', 0);
     const session = await startLevelTest(inputDeviceId, outputDeviceId, setMeterDb);
     levelTestRef.current = session;
     setMeterActive(true);
-    setStatus('Test wejścia działa — celuj w peak około −18 do −8 dBFS', 0);
+    setStatus('Input test running — aim for a peak around −18 to −8 dBFS', 0);
   };
 
   const handleStopMeter = async () => {
@@ -273,7 +279,7 @@ export function useRoomEq() {
     levelTestRef.current = null;
     setMeterActive(false);
     setMeterDb(-Infinity);
-    setStatus('Test wejścia zatrzymany', 0);
+    setStatus('Input test stopped', 0);
   };
 
   const handleMeasure = async () => {
@@ -284,11 +290,11 @@ export function useRoomEq() {
     try {
       const inputLabel =
         inputs.find((d) => d.deviceId === inputDeviceId)?.label ||
-        'Domyślne wejście';
+        'Default input';
       const outputLabel =
         outputs.find((d) => d.deviceId === outputDeviceId)?.label ||
         selectedOutputDevice?.label ||
-        'Domyślne wyjście';
+        'Default output';
 
       const result = await runMeasurement({
         inputDeviceId,
@@ -310,10 +316,10 @@ export function useRoomEq() {
       setMeasurementMeta(result.measurementMeta);
       setPresetStatus(
         result.suggestions.length
-          ? `Wygenerowano ${result.suggestions.length} filtrów.`
-          : 'Brak filtrów do zapisania — preset zawiera tylko nazwę i preamp.',
+          ? `Generated ${result.suggestions.length} filters.`
+          : 'No filters to save — preset contains only the name and preamp.',
       );
-      setStatus('Pomiar zakończony', 100);
+      setStatus('Measurement complete', 100);
     } finally {
       setRunning(false);
     }
@@ -347,20 +353,33 @@ export function useRoomEq() {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
       } else {
-        throw new Error('Brak schowka');
+        throw new Error('Clipboard unavailable');
       }
-      setPresetStatus('Preset skopiowany do schowka.');
+      setPresetStatus('Preset copied to clipboard.');
     } catch {
       setPresetStatus(
-        'Nie udało się skopiować automatycznie — skopiuj tekst ręcznie.',
+        'Could not copy automatically — copy the text manually.',
       );
     }
   };
 
   const exportPresetTxt = () => {
     downloadText(safePresetFilename(presetName), presetText, 'text/plain;charset=utf-8');
-    setPresetStatus('Plik TXT został wygenerowany.');
+    setPresetStatus('TXT file generated.');
   };
+
+  const applyMeasurementPreset = useCallback((id: MeasurementPresetId) => {
+    const preset = MEASUREMENT_PRESETS.find((item) => item.id === id);
+    if (!preset) return;
+
+    setActiveMeasurementPresetId(id);
+    setChannel(preset.channel);
+    setFStart(preset.fStart);
+    setFEnd(preset.fEnd);
+    setDuration(preset.duration);
+    setSmoothing(preset.smoothing);
+    setLevel(preset.level);
+  }, []);
 
   return {
     env,
@@ -387,6 +406,9 @@ export function useRoomEq() {
     setLevel,
     safetyCheck,
     setSafetyCheck,
+    activeMeasurementPresetId,
+    applyMeasurementPreset,
+    measurementPresets: MEASUREMENT_PRESETS,
     calibrationStatus,
     statusText,
     progress,

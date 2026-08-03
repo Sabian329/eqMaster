@@ -80,9 +80,9 @@ export function FrequencyChart({ curve, fMin = 20, fMax = 20000 }: FrequencyChar
       {!hasData && (
         <div className="empty-state">
           <div>
-            <strong>Brak pomiaru</strong>
+            <strong>No measurement yet</strong>
             <br />
-            Wybierz urządzenia, sprawdź poziom i uruchom sweep.
+            Select devices, check levels, and run a sweep.
           </div>
         </div>
       )}

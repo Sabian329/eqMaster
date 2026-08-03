@@ -1,59 +1,57 @@
 # Room EQ Measure
 
-Natywna aplikacja macOS (Electron + React + Vite + TypeScript) do pomiaru odpowiedzi częstotliwościowej głośników i pomieszczenia.
+Native macOS app (Electron + React + Vite + TypeScript) for measuring speaker and room frequency response.
 
-## Wymagania
+## Requirements
 
-- Node.js 20.19+ lub 22.12+
-- macOS (do budowania paczki `.app` / `.dmg`)
+- Node.js 20.19+ or 22.12+
+- macOS (for building `.app` / `.dmg` packages)
 
-## Uruchomienie deweloperskie (Electron)
+## Electron development
 
 ```bash
-cd room-eq-app
 npm install
 npm run dev:electron
 ```
 
-Uruchamia serwer Vite i okno aplikacji Electron z hot reload.
+Starts the Vite dev server and an Electron window with hot reload.
 
-## Uruchomienie tylko w przeglądarce
+## Browser-only development
 
 ```bash
 npm run dev
 ```
 
-## Budowanie aplikacji macOS
+## Building the macOS app
 
 ```bash
 npm run dist:dir
 ```
 
-Wynik: `release/mac-arm64/Room EQ Measure.app` (lub `mac-x64` na Intelu).
+Output: `release/mac-arm64/Room EQ Measure.app` (or `mac-x64` on Intel).
 
-Instalator DMG:
+DMG installer:
 
 ```bash
 npm run dist
 ```
 
-Wynik: `release/Room EQ Measure-1.0.0.dmg`.
+Output: `release/Room EQ Measure-1.0.0.dmg`.
 
-Przy pierwszym uruchomieniu niespodpisanego buildu macOS może wymagać: **System Settings → Privacy & Security → Open Anyway**.
+On first launch, an unsigned macOS build may require: **System Settings → Privacy & Security → Open Anyway**.
 
-> **Uwaga:** jeśli uruchamiasz z terminala w Cursorze i okno się nie otwiera, użyj zwykłego Terminal.app albo skorzystaj ze skryptów `npm run start` / `npm run dev:electron` — automatycznie wyłączają one zmienną `ELECTRON_RUN_AS_NODE`, która blokuje start Electrona w niektórych IDE.
+> **Note:** if you run from a terminal inside Cursor and the window does not open, use Terminal.app or run `npm run start` / `npm run dev:electron` — those scripts unset `ELECTRON_RUN_AS_NODE`, which blocks Electron in some IDEs.
 
-## Uprawnienia
+## Permissions
 
-Aplikacja prosi o dostęp do mikrofonu (wymagane do pomiaru). Upewnij się, że mikrofon jest włączony w **System Settings → Privacy & Security → Microphone**.
+The app requests microphone access (required for measurement). Make sure the microphone is enabled in **System Settings → Privacy & Security → Microphone**.
 
-## Skrypty
+## Scripts
 
-| Polecenie | Opis |
-|-----------|------|
-| `npm run dev:electron` | Dev z oknem Electron |
-| `npm run dev` | Dev w przeglądarce |
-| `npm run build` | Build renderera + procesu Electron |
-| `npm run dist:dir` | Paczka `.app` bez DMG |
+| Command | Description |
+|---------|-------------|
+| `npm run dev:electron` | Dev with Electron window |
+| `npm run dev` | Dev in browser |
+| `npm run build` | Build renderer + Electron process |
+| `npm run dist:dir` | `.app` package without DMG |
 | `npm run dist` | `.app` + `.dmg` + `.zip` |
-# eqMaster

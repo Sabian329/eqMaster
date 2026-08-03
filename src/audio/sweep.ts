@@ -62,7 +62,7 @@ export async function setOutputDevice(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Nie udało się ustawić wyjścia audio: ${message}. Ustaw interfejs jako domyślne wyjście systemowe.`,
+        `Could not set audio output: ${message}. Set your interface as the system default output.`,
       );
     }
   }

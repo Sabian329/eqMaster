@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "author": "Room EQ Measure",
-  "description": "Pomiar odpowiedzi częstotliwościowej głośników i pomieszczenia",
+  "description": "Speaker and room frequency response measurement",
   "scripts": {
     "dev": "vite",
     "dev:electron": "npm run build:electron && env -u ELECTRON_RUN_AS_NODE node scripts/dev-electron.mjs",
@@ -20,6 +20,8 @@
     "dist:dir": "npm run build && electron-builder --mac --dir"
   },
   "dependencies": {
+    "@chakra-ui/react": "^3.36.1",
+    "@emotion/react": "^11.14.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -58,7 +60,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Room EQ Measure potrzebuje dostępu do mikrofonu, aby nagrywać odpowiedź akustyczną pomieszczenia podczas pomiaru sweepu."
+        "NSMicrophoneUsageDescription": "Room EQ Measure needs microphone access to record the room's acoustic response during sweep measurements."
       },
       "identity": null
     },

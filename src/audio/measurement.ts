@@ -13,7 +13,7 @@ export function assembleChunks(chunks: RecorderChunk[]): {
   data: Float32Array;
   firstFrame: number;
 } {
-  if (!chunks.length) throw new Error('Nie odebrano próbek z mikrofonu.');
+  if (!chunks.length) throw new Error('No samples received from the microphone.');
 
   chunks.sort((a, b) => a.frame - b.frame);
   const firstFrame = chunks[0].frame;
@@ -73,19 +73,19 @@ export function analyzeInWorker(payload: {
       const message = event.data || {};
 
       if (message.type === 'progress') {
-        payload.onProgress?.(message.label || 'Analiza…', message.value || 75);
+        payload.onProgress?.(message.label || 'Analyzing…', message.value || 75);
       } else if (message.type === 'done') {
         worker.terminate();
         resolve(message.result);
       } else if (message.type === 'error') {
         worker.terminate();
-        reject(new Error(message.message || 'Błąd analizy.'));
+        reject(new Error(message.message || 'Analysis error.'));
       }
     };
 
     worker.onerror = (event: ErrorEvent) => {
       worker.terminate();
-      reject(new Error(event.message || 'Błąd workera analizy.'));
+      reject(new Error(event.message || 'Analysis worker error.'));
     };
 
     worker.postMessage(
@@ -144,10 +144,10 @@ export async function runMeasurement(
   let fMax = params.fMax;
 
   if (!Number.isFinite(fMin) || !Number.isFinite(fMax) || fMin < 10 || fMax <= fMin) {
-    throw new Error('Sprawdź zakres częstotliwości sweepu.');
+    throw new Error('Check the sweep frequency range.');
   }
 
-  onStatus('Przygotowanie mikrofonu…', 3);
+  onStatus('Preparing microphone…', 3);
 
   let context: AudioContext | null = null;
   let stream: MediaStream | null = null;
@@ -191,7 +191,7 @@ export async function runMeasurement(
 
     try {
       if (!context.audioWorklet || typeof AudioWorkletNode === 'undefined') {
-        throw new Error('AudioWorklet nie jest dostępny w tej przeglądarce.');
+        throw new Error('AudioWorklet is not available in this browser.');
       }
 
       await context.audioWorklet.addModule(workletUrl);
@@ -221,15 +221,15 @@ export async function runMeasurement(
           };
     } catch (workletError) {
       console.warn(
-        'AudioWorklet nie został uruchomiony. Używam trybu zgodności.',
+        'AudioWorklet failed to start. Using compatibility mode.',
         workletError,
       );
-      recorderMode = 'ScriptProcessor (tryb zgodności)';
+      recorderMode = 'ScriptProcessor (compatibility mode)';
 
       if (typeof context.createScriptProcessor !== 'function') {
         throw new Error(
-          'Przeglądarka zablokowała AudioWorklet i nie obsługuje trybu zgodności. ' +
-            'Uruchom aplikację przez localhost w aktualnym Chrome lub Edge.',
+          'The browser blocked AudioWorklet and does not support compatibility mode. ' +
+            'Run the app over localhost in current Chrome or Edge.',
         );
       }
 
@@ -270,8 +270,8 @@ export async function runMeasurement(
 
     onStatus(
       recorderMode === 'AudioWorklet'
-        ? 'Cisza w pomieszczeniu — pomiar szumu tła…'
-        : 'Tryb zgodności aktywny — pomiar szumu tła…',
+        ? 'Room quiet — measuring background noise…'
+        : 'Compatibility mode active — measuring background noise…',
       8,
     );
 
@@ -295,11 +295,11 @@ export async function runMeasurement(
         const progress = 8 + fraction * 62;
 
         if (elapsed < preRollSeconds) {
-          onStatus('Cisza w pomieszczeniu — pomiar szumu tła…', progress);
+          onStatus('Room quiet — measuring background noise…', progress);
         } else if (elapsed < preRollSeconds + durationSeconds) {
-          onStatus('Sweep trwa — nie poruszaj mikrofonem…', progress);
+          onStatus('Sweep in progress — keep the microphone still…', progress);
         } else {
-          onStatus('Rejestrowanie wybrzmienia pomieszczenia…', progress);
+          onStatus('Recording room decay…', progress);
         }
 
         if (fraction >= 1) {
@@ -321,17 +321,17 @@ export async function runMeasurement(
 
     if (stats.peakDb > -0.5) {
       throw new Error(
-        'Wejście zostało przesterowane. Zmniejsz gain mikrofonu/interfejsu i powtórz pomiar.',
+        'Input was clipped. Lower microphone/interface gain and repeat the measurement.',
       );
     }
 
     if (stats.peakDb < -50) {
       throw new Error(
-        'Sygnał jest bardzo cichy. Sprawdź routing, wyjście i gain mikrofonu.',
+        'Signal is very quiet. Check routing, output, and microphone gain.',
       );
     }
 
-    onStatus('Analiza danych…', 72);
+    onStatus('Analyzing data…', 72);
 
     const result = await analyzeInWorker({
       recorded: assembled.data,
