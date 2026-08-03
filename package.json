@@ -1,0 +1,69 @@
+{
+  "name": "room-eq-measure",
+  "productName": "Room EQ Measure",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "author": "Room EQ Measure",
+  "description": "Pomiar odpowiedzi częstotliwościowej głośników i pomieszczenia",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "npm run build:electron && env -u ELECTRON_RUN_AS_NODE node scripts/dev-electron.mjs",
+    "build:renderer": "tsc -b && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/rename-electron.cjs",
+    "build": "npm run build:renderer && npm run build:electron",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "dist": "npm run build && electron-builder --mac",
+    "dist:dir": "npm run build && electron-builder --mac --dir"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "electron": "^36.2.0",
+    "electron-builder": "^24.13.3",
+    "oxlint": "^1.75.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.roomeq.measure",
+    "productName": "Room EQ Measure",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Room EQ Measure potrzebuje dostępu do mikrofonu, aby nagrywać odpowiedź akustyczną pomieszczenia podczas pomiaru sweepu."
+      },
+      "identity": null
+    },
+    "dmg": {
+      "title": "Room EQ Measure"
+    }
+  }
+}
