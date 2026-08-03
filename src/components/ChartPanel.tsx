@@ -25,10 +25,19 @@ const STATS = [
 ] as const;
 
 export function ChartPanel({ state }: ChartPanelProps) {
-  const { chartSeries, measurementMeta, measurementRuns, averagedRun } = state;
+  const { chartSeries, measurementMeta, measurementRuns, averagedRun, activeToneProfile } =
+    state;
 
   const displayMeta =
     averagedRun?.meta ?? measurementRuns[measurementRuns.length - 1]?.meta ?? measurementMeta;
+
+  const chartFMin = displayMeta?.fMin ?? 20;
+  const chartFMax = chartSeries.reduce((max, series) => {
+    const lastFrequency = series.curve.length
+      ? series.curve[series.curve.length - 1].frequency
+      : 0;
+    return Math.max(max, lastFrequency);
+  }, chartFMin || 20);
 
   return (
     <Card.Root w="full" {...panelStyles.root}>
@@ -50,10 +59,18 @@ export function ChartPanel({ state }: ChartPanelProps) {
                 <Text>{item.label}</Text>
               </HStack>
             ))}
-            <HStack gap={2}>
-              <Box w="18px" h="3px" borderRadius="sm" bg="green.400" />
-              <Text>target 0 dB</Text>
-            </HStack>
+            {chartSeries.some((item) => item.id === 'target') && (
+              <HStack gap={2}>
+                <Box
+                  w="18px"
+                  h="0"
+                  borderTopWidth="2px"
+                  borderTopStyle="dashed"
+                  borderTopColor="green.400"
+                />
+                <Text>{activeToneProfile.label}</Text>
+              </HStack>
+            )}
           </HStack>
         </Flex>
       </Card.Header>
@@ -61,8 +78,8 @@ export function ChartPanel({ state }: ChartPanelProps) {
       <Box bg="chart.bg" minH={{ base: '430px', md: '520px' }} position="relative">
         <FrequencyChart
           series={chartSeries}
-          fMin={displayMeta?.fMin}
-          fMax={displayMeta?.fMax}
+          fMin={chartFMin}
+          fMax={chartFMax}
         />
       </Box>
 

@@ -18,7 +18,7 @@ function estimateQ(curve: CurvePoint[], index: number, deviation: number): numbe
   return Math.max(0.3, Math.min(12, curve[index].frequency / width));
 }
 
-export function createSuggestions(curve: CurvePoint[]): Suggestion[] {
+export function createSuggestions(curve: CurvePoint[], maxBands = 8): Suggestion[] {
   const candidates: Array<{
     index: number;
     frequency: number;
@@ -77,7 +77,7 @@ export function createSuggestions(curve: CurvePoint[]): Suggestion[] {
     });
 
     if (!tooClose) selected.push(candidate);
-    if (selected.length >= 8) break;
+    if (selected.length >= maxBands) break;
   }
 
   return selected

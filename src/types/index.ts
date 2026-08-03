@@ -21,6 +21,7 @@ export interface ChartSeries {
   color: string;
   lineWidth: number;
   alpha?: number;
+  dash?: number[];
 }
 
 export type DeviceStatusType = '' | 'good' | 'warning' | 'bad';

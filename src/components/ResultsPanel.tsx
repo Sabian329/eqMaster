@@ -11,10 +11,12 @@ import {
   Heading,
   HStack,
   Input,
+  NativeSelect,
   Table,
   Text,
   Textarea,
 } from '@chakra-ui/react';
+import type { EqBandCount, ToneProfileId } from '../config/toneProfiles';
 import type { RoomEqState } from '../hooks/useRoomEq';
 import { formatDb, formatFrequency } from '../utils/format';
 import {
@@ -55,6 +57,14 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
   const {
     curve,
     suggestions,
+    eqBandCount,
+    setEqBandCount,
+    eqBandOptions,
+    toneProfileId,
+    setToneProfileId,
+    activeToneProfile,
+    toneProfiles,
+    eqSummary,
     presetName,
     setPresetName,
     presetPreamp,
@@ -113,6 +123,55 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
             </Button>
           </HStack>
         </Flex>
+
+        <Grid
+          templateColumns={{ base: '1fr', md: '1fr 1fr' }}
+          gap={3}
+          mt={4}
+          pt={4}
+          borderTopWidth="1px"
+          borderColor="whiteAlpha.100"
+        >
+          <Field.Root>
+            <Field.Label {...fieldStyles.label}>Tone target</Field.Label>
+            <NativeSelect.Root size="md">
+              <NativeSelect.Field
+                {...fieldStyles.control}
+                value={toneProfileId}
+                onChange={(e) => setToneProfileId(e.target.value as ToneProfileId)}
+              >
+                {toneProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.label}
+                  </option>
+                ))}
+              </NativeSelect.Field>
+            </NativeSelect.Root>
+            <Field.HelperText mt={1.5} fontSize="xs" color="gray.500" lineHeight="1.6">
+              {activeToneProfile.description} The dashed green line on the chart shows this target.
+            </Field.HelperText>
+          </Field.Root>
+
+          <Field.Root>
+            <Field.Label {...fieldStyles.label}>Max EQ bands</Field.Label>
+            <NativeSelect.Root size="md">
+              <NativeSelect.Field
+                {...fieldStyles.control}
+                value={eqBandCount}
+                onChange={(e) => setEqBandCount(Number(e.target.value) as EqBandCount)}
+              >
+                {eqBandOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </NativeSelect.Field>
+            </NativeSelect.Root>
+            <Field.HelperText mt={1.5} fontSize="xs" color="gray.500" lineHeight="1.6">
+              {eqSummary} Change these after measurement — no re-sweep needed.
+            </Field.HelperText>
+          </Field.Root>
+        </Grid>
       </Card.Header>
 
       <Box overflowX="auto" borderBottomWidth="1px" borderColor="whiteAlpha.100">
@@ -121,7 +180,7 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
             <Table.Row>
               <Table.ColumnHeader color="gray.500">Type</Table.ColumnHeader>
               <Table.ColumnHeader color="gray.500">Frequency</Table.ColumnHeader>
-              <Table.ColumnHeader color="gray.500">Deviation</Table.ColumnHeader>
+              <Table.ColumnHeader color="gray.500">Deviation from target</Table.ColumnHeader>
               <Table.ColumnHeader color="gray.500">Suggestion</Table.ColumnHeader>
               <Table.ColumnHeader color="gray.500">Approx. Q</Table.ColumnHeader>
               <Table.ColumnHeader color="gray.500" minW="260px">
@@ -187,8 +246,8 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
           </Heading>
           {measurementRuns.length > 1 && averagedRun && (
             <Text fontSize="xs" color="brand.200" lineHeight="1.6" mb={3}>
-              EQ suggestions below are based on the averaged curve from{' '}
-              {measurementRuns.length} measurements. Individual runs are shown on the chart.
+              EQ suggestions use the averaged curve from {measurementRuns.length} measurements
+              and the selected tone target ({activeToneProfile.label}).
             </Text>
           )}
           <Text fontSize="xs" color="gray.500" lineHeight="1.6" mb={4}>

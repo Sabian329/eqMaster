@@ -1,5 +1,6 @@
 import type { AnalysisResult, CurvePoint } from '../types';
 import { createSuggestions } from '../utils/suggestions';
+import { sanitizeCurve } from '../utils/sanitizeCurve';
 
 interface WorkerInput {
   recordedBuffer: ArrayBuffer;
@@ -156,6 +157,7 @@ function analyze(
   }
 
   const epsilon = Math.max(maxReferencePower * 1e-12, 1e-20);
+  const regularization = Math.max(maxReferencePower * 1e-3, epsilon * 100);
   const prefix = new Float64Array(maxBin + 2);
 
   self.postMessage({
@@ -172,20 +174,20 @@ function analyze(
       recordedReal[bin] * recordedReal[bin] +
       recordedImag[bin] * recordedImag[bin];
 
-    const denominator = referencePower + epsilon;
+    const denominator = referencePower + regularization;
     let transferPower =
       (recordedPower * referencePower) / (denominator * denominator);
 
     if (!Number.isFinite(transferPower) || transferPower < 1e-30) {
       transferPower = 1e-30;
-    } else if (transferPower > 1e12) {
-      transferPower = 1e12;
+    } else if (transferPower > 1e4) {
+      transferPower = 1e4;
     }
 
     prefix[bin + 1] = prefix[bin] + transferPower;
   }
 
-  const usableMax = Math.min(fMax, sampleRate * 0.475);
+  const usableMax = Math.min(fMax, sampleRate * 0.45);
   const pointCount = 520;
   const curve: CurvePoint[] = [];
   const octaveHalfWidth = 1 / (2 * smoothing);
@@ -204,24 +206,26 @@ function analyze(
       10 * Math.log10(Math.max(averagePower, 1e-30)) +
       interpolateCalibration(calibration, frequency);
 
-    curve.push({ frequency, db });
+    curve.push({ frequency, db: Math.max(-54, Math.min(18, db)) });
   }
 
-  const normalizationValues = curve
+  const cleanedCurve = sanitizeCurve(curve);
+
+  const normalizationValues = cleanedCurve
     .filter((point) => point.frequency >= 500 && point.frequency <= 2000)
     .map((point) => point.db);
 
   const normalization = median(normalizationValues);
-  for (const point of curve) point.db -= normalization;
+  for (const point of cleanedCurve) point.db -= normalization;
 
   self.postMessage({
     type: 'progress',
     value: 97,
     label: 'Finding peaks and dips…',
   });
-  const suggestions = createSuggestions(curve);
+  const suggestions = createSuggestions(cleanedCurve);
 
-  return { curve, suggestions, fftSize: n, normalization };
+  return { curve: cleanedCurve, suggestions, fftSize: n, normalization };
 }
 
 self.onmessage = (event: MessageEvent<WorkerInput>) => {

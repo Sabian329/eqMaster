@@ -24,10 +24,19 @@ import { downloadText, safePresetFilename } from '../utils/download';
 import { formatFrequency } from '../utils/format';
 import { averageCurves } from '../utils/averageCurves';
 import { createSuggestions } from '../utils/suggestions';
+import { sanitizeCurve } from '../utils/sanitizeCurve';
+import { applyToneTarget, buildTargetCurve } from '../utils/toneProfile';
 import {
   MEASUREMENT_PRESETS,
   type MeasurementPresetId,
 } from '../config/measurementPresets';
+import {
+  EQ_BAND_OPTIONS,
+  TONE_PROFILES,
+  getToneProfile,
+  type EqBandCount,
+  type ToneProfileId,
+} from '../config/toneProfiles';
 
 const RUN_COLORS = ['#8ec5ff', '#55d68b', '#ffbf5a'];
 
@@ -154,10 +163,12 @@ export function useRoomEq() {
   const sessionMeterRef = useRef<{ stop: () => Promise<void> } | null>(null);
 
   const [curve, setCurve] = useState<CurvePoint[]>([]);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [measurementMeta, setMeasurementMeta] = useState<MeasurementMeta | null>(null);
   const [measurementRuns, setMeasurementRuns] = useState<MeasurementRun[]>([]);
   const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
+
+  const [eqBandCount, setEqBandCount] = useState<EqBandCount>(8);
+  const [toneProfileId, setToneProfileId] = useState<ToneProfileId>('flat');
 
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionStep, setSessionStep] = useState<MeasurementSessionStep>('mic-test');
@@ -262,10 +273,47 @@ export function useRoomEq() {
   const measureEnabled =
     env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
 
-  const chartSeries = useMemo(
-    () => buildChartSeries(measurementRuns, averagedRun),
-    [measurementRuns, averagedRun],
+  const activeToneProfile = useMemo(
+    () => getToneProfile(toneProfileId),
+    [toneProfileId],
   );
+
+  const targetCurve = useMemo(() => {
+    if (!curve.length) return [];
+    return buildTargetCurve(curve, toneProfileId);
+  }, [curve, toneProfileId]);
+
+  const suggestions = useMemo((): Suggestion[] => {
+    if (!curve.length) return [];
+    const adjustedCurve = applyToneTarget(curve, activeToneProfile);
+    return createSuggestions(adjustedCurve, eqBandCount);
+  }, [curve, activeToneProfile, eqBandCount]);
+
+  const chartSeries = useMemo(() => {
+    const base = buildChartSeries(measurementRuns, averagedRun);
+    if (!targetCurve.length) return base;
+
+    return [
+      ...base,
+      {
+        id: 'target',
+        label: activeToneProfile.label,
+        curve: targetCurve,
+        color: '#55d68b',
+        lineWidth: 1.6,
+        alpha: 0.95,
+        dash: [7, 6],
+      },
+    ];
+  }, [measurementRuns, averagedRun, targetCurve, activeToneProfile.label]);
+
+  const eqSummary = useMemo(() => {
+    if (!curve.length) return '';
+    if (!suggestions.length) {
+      return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
+    }
+    return `${suggestions.length} filter${suggestions.length > 1 ? 's' : ''} for ${activeToneProfile.label} (max ${eqBandCount} bands).`;
+  }, [curve.length, suggestions.length, activeToneProfile.label, eqBandCount]);
 
   const presetText = useMemo(
     () => buildPresetText(presetName, presetPreamp, suggestions),
@@ -317,15 +365,14 @@ export function useRoomEq() {
   const applySessionResults = useCallback((runs: MeasurementRun[]) => {
     if (!runs.length) return;
 
-    const averagedCurve = averageCurves(runs.map((run) => run.curve));
-    const averagedSuggestions = createSuggestions(averagedCurve);
+    const averagedCurve = sanitizeCurve(averageCurves(runs.map((run) => run.curve)));
     const baseMeta = runs[runs.length - 1].meta;
 
     const average: MeasurementRun = {
       index: 0,
       label: runs.length > 1 ? 'Average' : runs[0].label,
       curve: averagedCurve,
-      suggestions: averagedSuggestions,
+      suggestions: [],
       meta: {
         ...baseMeta,
         date: new Date().toISOString(),
@@ -335,13 +382,8 @@ export function useRoomEq() {
     setMeasurementRuns(runs);
     setAveragedRun(runs.length > 1 ? average : null);
     setCurve(averagedCurve);
-    setSuggestions(averagedSuggestions);
     setMeasurementMeta(baseMeta);
-    setPresetStatus(
-      averagedSuggestions.length
-        ? `Generated ${averagedSuggestions.length} filters from ${runs.length} measurement${runs.length > 1 ? 's' : ''}.`
-        : 'No filters to save — preset contains only the name and preamp.',
-    );
+    setPresetStatus('');
     setStatus(
       runs.length > 1
         ? `Session complete — averaged ${runs.length} measurements`
@@ -558,6 +600,8 @@ export function useRoomEq() {
           meta: measurementMeta,
           curve,
           suggestions,
+          toneProfileId,
+          eqBandCount,
           runs: measurementRuns,
           average: averagedRun,
         },
@@ -641,6 +685,15 @@ export function useRoomEq() {
     measureEnabled,
     curve,
     suggestions,
+    eqBandCount,
+    setEqBandCount,
+    eqBandOptions: EQ_BAND_OPTIONS,
+    toneProfileId,
+    setToneProfileId,
+    activeToneProfile,
+    toneProfiles: TONE_PROFILES,
+    eqSummary,
+    targetCurve,
     measurementMeta,
     measurementRuns,
     averagedRun,

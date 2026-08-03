@@ -8,12 +8,14 @@ function strokeSeries(
   color: string,
   lineWidth: number,
   alpha = 1,
+  dash?: number[],
 ) {
   context.strokeStyle = color;
   context.globalAlpha = alpha;
   context.lineWidth = lineWidth;
   context.lineJoin = 'round';
   context.lineCap = 'round';
+  context.setLineDash(dash ?? []);
   context.beginPath();
 
   curve.forEach((point, index) => {
@@ -24,6 +26,7 @@ function strokeSeries(
   });
 
   context.stroke();
+  context.setLineDash([]);
 }
 
 export function drawChart(
@@ -58,8 +61,11 @@ export function drawChart(
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  const rawMin = Math.min(...allPoints.map((point) => point.db));
-  const rawMax = Math.max(...allPoints.map((point) => point.db));
+  const rawValues = allPoints.map((point) => point.db).sort((a, b) => a - b);
+  const pick = (fraction: number) =>
+    rawValues[Math.max(0, Math.min(rawValues.length - 1, Math.floor(fraction * (rawValues.length - 1))))];
+  const rawMin = Math.max(-60, pick(0.02));
+  const rawMax = Math.min(40, pick(0.98));
   let yMin = Math.floor((Math.max(-60, rawMin) - 3) / 5) * 5;
   let yMax = Math.ceil((Math.min(40, rawMax) + 3) / 5) * 5;
 
@@ -115,7 +121,7 @@ export function drawChart(
     context.fillText(label, x, height - padding.bottom + 18);
   }
 
-  if (yMin <= 0 && yMax >= 0) {
+  if (yMin <= 0 && yMax >= 0 && !series.some((item) => item.id === 'target')) {
     const y = yForDb(0);
     context.strokeStyle = targetColor;
     context.globalAlpha = 0.95;
@@ -134,6 +140,8 @@ export function drawChart(
   context.clip();
 
   const ordered = [...series].sort((a, b) => {
+    if (a.id === 'target') return -1;
+    if (b.id === 'target') return 1;
     if (a.id === 'average') return 1;
     if (b.id === 'average') return -1;
     return 0;
@@ -149,6 +157,7 @@ export function drawChart(
       item.color,
       item.lineWidth,
       item.alpha ?? 1,
+      item.dash,
     );
   }
 
