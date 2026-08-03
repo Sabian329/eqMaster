@@ -1,3 +1,28 @@
+export type MeasurementCount = 1 | 2 | 3;
+
+export type MeasurementSessionStep =
+  | 'mic-test'
+  | 'ready'
+  | 'measuring'
+  | 'run-complete';
+
+export interface MeasurementRun {
+  index: number;
+  label: string;
+  curve: CurvePoint[];
+  suggestions: Suggestion[];
+  meta: MeasurementMeta;
+}
+
+export interface ChartSeries {
+  id: string;
+  label: string;
+  curve: CurvePoint[];
+  color: string;
+  lineWidth: number;
+  alpha?: number;
+}
+
 export type DeviceStatusType = '' | 'good' | 'warning' | 'bad';
 
 export type ChannelMode = 'left' | 'right' | 'both';

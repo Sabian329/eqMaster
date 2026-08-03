@@ -4,6 +4,7 @@ import workletUrl from '../worklets/pcm-recorder-processor.ts?url';
 import {
   createAudioConstraints,
   createAudioContext,
+  makePinkNoise,
   makeSweep,
   makeSweepBuffer,
   setOutputDevice,
@@ -400,10 +401,16 @@ export async function runMeasurement(
   }
 }
 
+export interface LevelTestOptions {
+  levelDb: number;
+  channel: ChannelMode;
+}
+
 export async function startLevelTest(
   inputDeviceId: string,
   outputDeviceId: string,
   onLevel: (db: number) => void,
+  options: LevelTestOptions,
 ): Promise<{
   stop: () => Promise<void>;
 }> {
@@ -418,13 +425,14 @@ export async function startLevelTest(
   const analyser = context.createAnalyser();
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.25;
-
-  const silent = context.createGain();
-  silent.gain.value = 0;
-
   source.connect(analyser);
-  analyser.connect(silent);
-  silent.connect(context.destination);
+
+  const noiseData = makePinkNoise(context.sampleRate, 2.5, options.levelDb);
+  const playback = context.createBufferSource();
+  playback.buffer = makeSweepBuffer(context, noiseData, options.channel);
+  playback.loop = true;
+  playback.connect(context.destination);
+  playback.start();
 
   const samples = new Float32Array(analyser.fftSize);
   let rafId = 0;
@@ -446,17 +454,22 @@ export async function startLevelTest(
     stop: async () => {
       cancelAnimationFrame(rafId);
       try {
+        playback.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        playback.disconnect();
+      } catch {
+        /* ignore */
+      }
+      try {
         source.disconnect();
       } catch {
         /* ignore */
       }
       try {
         analyser.disconnect();
-      } catch {
-        /* ignore */
-      }
-      try {
-        silent.disconnect();
       } catch {
         /* ignore */
       }

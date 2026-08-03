@@ -65,6 +65,8 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
     exportJson,
     copyPreset,
     exportPresetTxt,
+    measurementRuns,
+    averagedRun,
   } = state;
 
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -77,10 +79,26 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
     prevCurveLen.current = curve.length;
   }, [curve.length]);
 
-  if (!curve.length) return null;
+  if (!curve.length) {
+    return (
+      <Card.Root ref={sectionRef} w="full" {...panelStyles.root}>
+        <Card.Header {...panelStyles.header}>
+          <Heading size="md" fontWeight="semibold" color="gray.100">
+            Analysis & EQ suggestions
+          </Heading>
+        </Card.Header>
+        <Card.Body {...panelStyles.body}>
+          <Text fontSize="sm" color="gray.500" lineHeight="1.65">
+            Run a measurement to see peak/dip suggestions, export options, and a text preset
+            for your equalizer.
+          </Text>
+        </Card.Body>
+      </Card.Root>
+    );
+  }
 
   return (
-    <Card.Root ref={sectionRef} {...panelStyles.root}>
+    <Card.Root ref={sectionRef} w="full" {...panelStyles.root}>
       <Card.Header {...panelStyles.header}>
         <Flex justify="space-between" align="center" gap={4} flexWrap="wrap">
           <Heading size="md" fontWeight="semibold" color="gray.100">
@@ -167,6 +185,12 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
           <Heading size="sm" mb={2} color="gray.100">
             Text preset for your equalizer
           </Heading>
+          {measurementRuns.length > 1 && averagedRun && (
+            <Text fontSize="xs" color="brand.200" lineHeight="1.6" mb={3}>
+              EQ suggestions below are based on the averaged curve from{' '}
+              {measurementRuns.length} measurements. Individual runs are shown on the chart.
+            </Text>
+          )}
           <Text fontSize="xs" color="gray.500" lineHeight="1.6" mb={4}>
             Format matches the example:{' '}
             <Code

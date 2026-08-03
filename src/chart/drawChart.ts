@@ -1,8 +1,34 @@
-import type { ChartBounds, CurvePoint } from '../types';
+import type { ChartBounds, ChartSeries, CurvePoint } from '../types';
+
+function strokeSeries(
+  context: CanvasRenderingContext2D,
+  curve: CurvePoint[],
+  xForFrequency: (frequency: number) => number,
+  yForDb: (db: number) => number,
+  color: string,
+  lineWidth: number,
+  alpha = 1,
+) {
+  context.strokeStyle = color;
+  context.globalAlpha = alpha;
+  context.lineWidth = lineWidth;
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
+  context.beginPath();
+
+  curve.forEach((point, index) => {
+    const x = xForFrequency(point.frequency);
+    const y = yForDb(point.db);
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  });
+
+  context.stroke();
+}
 
 export function drawChart(
   canvas: HTMLCanvasElement,
-  curve: CurvePoint[],
+  series: ChartSeries[],
   fMin: number,
   fMax: number,
 ): ChartBounds | null {
@@ -20,20 +46,20 @@ export function drawChart(
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, width, height);
 
+  const allPoints = series.flatMap((item) => item.curve);
+  if (!allPoints.length) return null;
+
   const styles = getComputedStyle(document.documentElement);
   const lineColor = styles.getPropertyValue('--line').trim();
   const mutedColor = styles.getPropertyValue('--muted').trim();
-  const accentColor = styles.getPropertyValue('--accent').trim();
   const targetColor = styles.getPropertyValue('--good').trim();
 
   const padding = { left: 58, right: 20, top: 22, bottom: 44 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  if (!curve.length) return null;
-
-  const rawMin = Math.min(...curve.map((point) => point.db));
-  const rawMax = Math.max(...curve.map((point) => point.db));
+  const rawMin = Math.min(...allPoints.map((point) => point.db));
+  const rawMax = Math.max(...allPoints.map((point) => point.db));
   let yMin = Math.floor((Math.max(-60, rawMin) - 3) / 5) * 5;
   let yMax = Math.ceil((Math.min(40, rawMax) + 3) / 5) * 5;
 
@@ -107,21 +133,25 @@ export function drawChart(
   context.rect(padding.left, padding.top, plotWidth, plotHeight);
   context.clip();
 
-  context.strokeStyle = accentColor;
-  context.globalAlpha = 1;
-  context.lineWidth = 2.2;
-  context.lineJoin = 'round';
-  context.lineCap = 'round';
-  context.beginPath();
-
-  curve.forEach((point, index) => {
-    const x = xForFrequency(point.frequency);
-    const y = yForDb(point.db);
-    if (index === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
+  const ordered = [...series].sort((a, b) => {
+    if (a.id === 'average') return 1;
+    if (b.id === 'average') return -1;
+    return 0;
   });
 
-  context.stroke();
+  for (const item of ordered) {
+    if (!item.curve.length) continue;
+    strokeSeries(
+      context,
+      item.curve,
+      xForFrequency,
+      yForDb,
+      item.color,
+      item.lineWidth,
+      item.alpha ?? 1,
+    );
+  }
+
   context.restore();
 
   context.strokeStyle = lineColor;

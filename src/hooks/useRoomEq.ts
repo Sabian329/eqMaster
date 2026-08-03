@@ -9,19 +9,27 @@ import {
 import { runMeasurement, startLevelTest } from '../audio/measurement';
 import type {
   ChannelMode,
+  ChartSeries,
   CurvePoint,
   DeviceStatusType,
+  MeasurementCount,
   MeasurementMeta,
+  MeasurementRun,
+  MeasurementSessionStep,
   SelectedOutputDevice,
   Suggestion,
 } from '../types';
 import { buildPresetText } from '../utils/preset';
 import { downloadText, safePresetFilename } from '../utils/download';
 import { formatFrequency } from '../utils/format';
+import { averageCurves } from '../utils/averageCurves';
+import { createSuggestions } from '../utils/suggestions';
 import {
   MEASUREMENT_PRESETS,
   type MeasurementPresetId,
 } from '../config/measurementPresets';
+
+const RUN_COLORS = ['#8ec5ff', '#55d68b', '#ffbf5a'];
 
 function getDeviceStatusMessage(
   mediaPermissionGranted: boolean,
@@ -60,6 +68,51 @@ function getDeviceStatusMessage(
   };
 }
 
+function buildChartSeries(
+  runs: MeasurementRun[],
+  averaged: MeasurementRun | null,
+): ChartSeries[] {
+  if (!runs.length && !averaged) return [];
+
+  if (runs.length <= 1 && !averaged) {
+    const run = runs[0];
+    return run
+      ? [
+          {
+            id: `run-${run.index}`,
+            label: run.label,
+            curve: run.curve,
+            color: '#65a9ff',
+            lineWidth: 2.2,
+            alpha: 1,
+          },
+        ]
+      : [];
+  }
+
+  const series: ChartSeries[] = runs.map((run, index) => ({
+    id: `run-${run.index}`,
+    label: run.label,
+    curve: run.curve,
+    color: RUN_COLORS[index] ?? '#8ec5ff',
+    lineWidth: 1.6,
+    alpha: 0.55,
+  }));
+
+  if (averaged) {
+    series.push({
+      id: 'average',
+      label: averaged.label,
+      curve: averaged.curve,
+      color: '#65a9ff',
+      lineWidth: 2.4,
+      alpha: 1,
+    });
+  }
+
+  return series;
+}
+
 export function useRoomEq() {
   const env = useMemo(() => checkEnvironment(), []);
 
@@ -76,12 +129,13 @@ export function useRoomEq() {
 
   const [inputDeviceId, setInputDeviceId] = useState('');
   const [outputDeviceId, setOutputDeviceId] = useState('');
-  const [channel, setChannel] = useState<ChannelMode>('left');
+  const [channel, setChannel] = useState<ChannelMode>('both');
   const [fStart, setFStart] = useState(20);
   const [fEnd, setFEnd] = useState(20000);
   const [duration, setDuration] = useState(10);
   const [smoothing, setSmoothing] = useState(12);
   const [level, setLevel] = useState(-24);
+  const [measurementCount, setMeasurementCount] = useState<MeasurementCount>(1);
   const [safetyCheck, setSafetyCheck] = useState(false);
   const [activeMeasurementPresetId, setActiveMeasurementPresetId] =
     useState<MeasurementPresetId>('room');
@@ -97,10 +151,20 @@ export function useRoomEq() {
   const [meterActive, setMeterActive] = useState(false);
   const [meterDb, setMeterDb] = useState(-Infinity);
   const levelTestRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  const sessionMeterRef = useRef<{ stop: () => Promise<void> } | null>(null);
 
   const [curve, setCurve] = useState<CurvePoint[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [measurementMeta, setMeasurementMeta] = useState<MeasurementMeta | null>(null);
+  const [measurementRuns, setMeasurementRuns] = useState<MeasurementRun[]>([]);
+  const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
+
+  const [sessionOpen, setSessionOpen] = useState(false);
+  const [sessionStep, setSessionStep] = useState<MeasurementSessionStep>('mic-test');
+  const [sessionTargetCount, setSessionTargetCount] = useState<MeasurementCount>(1);
+  const [sessionRuns, setSessionRuns] = useState<MeasurementRun[]>([]);
+  const [sessionMeterActive, setSessionMeterActive] = useState(false);
+  const [sessionMeterDb, setSessionMeterDb] = useState(-Infinity);
 
   const [presetName, setPresetName] = useState('Room EQ');
   const [presetPreamp, setPresetPreamp] = useState(0);
@@ -160,6 +224,7 @@ export function useRoomEq() {
   useEffect(() => {
     return () => {
       levelTestRef.current?.stop().catch(() => {});
+      sessionMeterRef.current?.stop().catch(() => {});
     };
   }, []);
 
@@ -195,12 +260,102 @@ export function useRoomEq() {
   }, [env]);
 
   const measureEnabled =
-    env.ready && safetyCheck && !running && !meterActive;
+    env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
+
+  const chartSeries = useMemo(
+    () => buildChartSeries(measurementRuns, averagedRun),
+    [measurementRuns, averagedRun],
+  );
 
   const presetText = useMemo(
     () => buildPresetText(presetName, presetPreamp, suggestions),
     [presetName, presetPreamp, suggestions],
   );
+
+  const getDeviceLabels = useCallback(() => {
+    const inputLabel =
+      inputs.find((d) => d.deviceId === inputDeviceId)?.label || 'Default input';
+    const outputLabel =
+      outputs.find((d) => d.deviceId === outputDeviceId)?.label ||
+      selectedOutputDevice?.label ||
+      'Default output';
+    return { inputLabel, outputLabel };
+  }, [inputs, outputs, inputDeviceId, outputDeviceId, selectedOutputDevice]);
+
+  const executeMeasurement = useCallback(
+    async (onStatus: (text: string, progress: number) => void) => {
+      const { inputLabel, outputLabel } = getDeviceLabels();
+      return runMeasurement({
+        inputDeviceId,
+        outputDeviceId,
+        channel,
+        fMin: fStart,
+        fMax: fEnd,
+        durationSeconds: duration,
+        smoothing,
+        levelDb: level,
+        calibration,
+        inputLabel,
+        outputLabel,
+        onStatus,
+      });
+    },
+    [
+      getDeviceLabels,
+      inputDeviceId,
+      outputDeviceId,
+      channel,
+      fStart,
+      fEnd,
+      duration,
+      smoothing,
+      level,
+      calibration,
+    ],
+  );
+
+  const applySessionResults = useCallback((runs: MeasurementRun[]) => {
+    if (!runs.length) return;
+
+    const averagedCurve = averageCurves(runs.map((run) => run.curve));
+    const averagedSuggestions = createSuggestions(averagedCurve);
+    const baseMeta = runs[runs.length - 1].meta;
+
+    const average: MeasurementRun = {
+      index: 0,
+      label: runs.length > 1 ? 'Average' : runs[0].label,
+      curve: averagedCurve,
+      suggestions: averagedSuggestions,
+      meta: {
+        ...baseMeta,
+        date: new Date().toISOString(),
+      },
+    };
+
+    setMeasurementRuns(runs);
+    setAveragedRun(runs.length > 1 ? average : null);
+    setCurve(averagedCurve);
+    setSuggestions(averagedSuggestions);
+    setMeasurementMeta(baseMeta);
+    setPresetStatus(
+      averagedSuggestions.length
+        ? `Generated ${averagedSuggestions.length} filters from ${runs.length} measurement${runs.length > 1 ? 's' : ''}.`
+        : 'No filters to save — preset contains only the name and preamp.',
+    );
+    setStatus(
+      runs.length > 1
+        ? `Session complete — averaged ${runs.length} measurements`
+        : 'Measurement complete',
+      100,
+    );
+  }, [setStatus]);
+
+  const stopSessionMeter = useCallback(async () => {
+    await sessionMeterRef.current?.stop();
+    sessionMeterRef.current = null;
+    setSessionMeterActive(false);
+    setSessionMeterDb(-Infinity);
+  }, []);
 
   const handleRequestPermission = async () => {
     setStatus('Waiting for microphone permission…', 0);
@@ -267,11 +422,17 @@ export function useRoomEq() {
 
   const handleStartMeter = async () => {
     await levelTestRef.current?.stop();
-    setStatus('Starting input test…', 0);
-    const session = await startLevelTest(inputDeviceId, outputDeviceId, setMeterDb);
+    setStatus('Starting level check…', 0);
+    const session = await startLevelTest(inputDeviceId, outputDeviceId, setMeterDb, {
+      levelDb: level,
+      channel,
+    });
     levelTestRef.current = session;
     setMeterActive(true);
-    setStatus('Input test running — aim for a peak around −18 to −8 dBFS', 0);
+    setStatus(
+      'Pink noise is playing at sweep level — adjust output volume and mic gain. Aim for −18 to −8 dBFS.',
+      0,
+    );
   };
 
   const handleStopMeter = async () => {
@@ -282,47 +443,97 @@ export function useRoomEq() {
     setStatus('Input test stopped', 0);
   };
 
-  const handleMeasure = async () => {
-    if (running) return;
+  const handleStartSession = async () => {
+    if (running || sessionOpen) return;
     await handleStopMeter();
+    await stopSessionMeter();
+
+    setSessionOpen(true);
+    setSessionStep('mic-test');
+    setSessionTargetCount(measurementCount);
+    setSessionRuns([]);
+    setSessionMeterDb(-Infinity);
+    setStatus('Measurement session started', 0);
+  };
+
+  const handleSessionSkipMicTest = () => {
+    void stopSessionMeter();
+    setSessionStep('ready');
+  };
+
+  const handleSessionStartMeter = async () => {
+    await sessionMeterRef.current?.stop();
+    const session = await startLevelTest(inputDeviceId, outputDeviceId, setSessionMeterDb, {
+      levelDb: level,
+      channel,
+    });
+    sessionMeterRef.current = session;
+    setSessionMeterActive(true);
+  };
+
+  const handleSessionStopMeter = async () => {
+    await stopSessionMeter();
+  };
+
+  const handleSessionRunMeasurement = async () => {
+    if (running) return;
+    await stopSessionMeter();
     setRunning(true);
+    setSessionStep('measuring');
 
     try {
-      const inputLabel =
-        inputs.find((d) => d.deviceId === inputDeviceId)?.label ||
-        'Default input';
-      const outputLabel =
-        outputs.find((d) => d.deviceId === outputDeviceId)?.label ||
-        selectedOutputDevice?.label ||
-        'Default output';
+      const runIndex = sessionRuns.length + 1;
+      const result = await executeMeasurement(setStatus);
+      const run: MeasurementRun = {
+        index: runIndex,
+        label: `Run ${runIndex}`,
+        curve: result.curve,
+        suggestions: result.suggestions,
+        meta: result.measurementMeta,
+      };
 
-      const result = await runMeasurement({
-        inputDeviceId,
-        outputDeviceId,
-        channel,
-        fMin: fStart,
-        fMax: fEnd,
-        durationSeconds: duration,
-        smoothing,
-        levelDb: level,
-        calibration,
-        inputLabel,
-        outputLabel,
-        onStatus: setStatus,
-      });
-
-      setCurve(result.curve);
-      setSuggestions(result.suggestions);
-      setMeasurementMeta(result.measurementMeta);
-      setPresetStatus(
-        result.suggestions.length
-          ? `Generated ${result.suggestions.length} filters.`
-          : 'No filters to save — preset contains only the name and preamp.',
-      );
-      setStatus('Measurement complete', 100);
+      setSessionRuns((previous) => [...previous, run]);
+      setSessionStep('run-complete');
+      setStatus(`Measurement ${runIndex} complete`, 100);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message, 0);
+      setSessionStep('ready');
+      alert(message);
     } finally {
       setRunning(false);
     }
+  };
+
+  const handleSessionContinue = () => {
+    setSessionStep('ready');
+    setStatus(`Ready for measurement ${sessionRuns.length + 1}`, 0);
+  };
+
+  const handleSessionFinish = async () => {
+    if (!sessionRuns.length) return;
+    await stopSessionMeter();
+    applySessionResults(sessionRuns);
+    setSessionOpen(false);
+    setSessionStep('mic-test');
+    setSessionRuns([]);
+  };
+
+  const handleSessionCancel = async () => {
+    if (running) return;
+
+    if (
+      sessionRuns.length > 0 &&
+      !window.confirm('Close the session without saving completed measurements?')
+    ) {
+      return;
+    }
+
+    await stopSessionMeter();
+    setSessionOpen(false);
+    setSessionStep('mic-test');
+    setSessionRuns([]);
+    setStatus('Ready', 0);
   };
 
   const exportCsv = () => {
@@ -342,7 +553,17 @@ export function useRoomEq() {
     if (!curve.length) return;
     downloadText(
       'room-eq-measurement.json',
-      JSON.stringify({ meta: measurementMeta, curve, suggestions }, null, 2),
+      JSON.stringify(
+        {
+          meta: measurementMeta,
+          curve,
+          suggestions,
+          runs: measurementRuns,
+          average: averagedRun,
+        },
+        null,
+        2,
+      ),
       'application/json',
     );
   };
@@ -404,6 +625,8 @@ export function useRoomEq() {
     setSmoothing,
     level,
     setLevel,
+    measurementCount,
+    setMeasurementCount,
     safetyCheck,
     setSafetyCheck,
     activeMeasurementPresetId,
@@ -419,6 +642,15 @@ export function useRoomEq() {
     curve,
     suggestions,
     measurementMeta,
+    measurementRuns,
+    averagedRun,
+    chartSeries,
+    sessionOpen,
+    sessionStep,
+    sessionTargetCount,
+    sessionRuns,
+    sessionMeterActive,
+    sessionMeterDb,
     presetName,
     setPresetName,
     presetPreamp,
@@ -431,7 +663,14 @@ export function useRoomEq() {
     handleCalibrationFile,
     handleStartMeter,
     handleStopMeter,
-    handleMeasure,
+    handleStartSession,
+    handleSessionSkipMicTest,
+    handleSessionStartMeter,
+    handleSessionStopMeter,
+    handleSessionRunMeasurement,
+    handleSessionContinue,
+    handleSessionFinish,
+    handleSessionCancel,
     exportCsv,
     exportJson,
     copyPreset,

@@ -25,20 +25,31 @@ const STATS = [
 ] as const;
 
 export function ChartPanel({ state }: ChartPanelProps) {
-  const { curve, measurementMeta } = state;
+  const { chartSeries, measurementMeta, measurementRuns, averagedRun } = state;
+
+  const displayMeta =
+    averagedRun?.meta ?? measurementRuns[measurementRuns.length - 1]?.meta ?? measurementMeta;
 
   return (
-    <Card.Root {...panelStyles.root}>
+    <Card.Root w="full" {...panelStyles.root}>
       <Card.Header {...panelStyles.header}>
         <Flex justify="space-between" align="center" gap={4} flexWrap="wrap">
           <Heading size="md" fontWeight="semibold" color="gray.100">
             Frequency response
           </Heading>
-          <HStack gap={4} fontSize="xs" color="gray.400">
-            <HStack gap={2}>
-              <Box w="18px" h="3px" borderRadius="sm" bg="brand.400" />
-              <Text>measurement</Text>
-            </HStack>
+          <HStack gap={4} fontSize="xs" color="gray.400" flexWrap="wrap">
+            {chartSeries.map((item) => (
+              <HStack key={item.id} gap={2}>
+                <Box
+                  w="18px"
+                  h="3px"
+                  borderRadius="sm"
+                  bg={item.color}
+                  opacity={item.alpha ?? 1}
+                />
+                <Text>{item.label}</Text>
+              </HStack>
+            ))}
             <HStack gap={2}>
               <Box w="18px" h="3px" borderRadius="sm" bg="green.400" />
               <Text>target 0 dB</Text>
@@ -49,9 +60,9 @@ export function ChartPanel({ state }: ChartPanelProps) {
 
       <Box bg="chart.bg" minH={{ base: '430px', md: '520px' }} position="relative">
         <FrequencyChart
-          curve={curve}
-          fMin={measurementMeta?.fMin}
-          fMax={measurementMeta?.fMax}
+          series={chartSeries}
+          fMin={displayMeta?.fMin}
+          fMax={displayMeta?.fMax}
         />
       </Box>
 
@@ -78,7 +89,7 @@ export function ChartPanel({ state }: ChartPanelProps) {
                 {label}
               </Stat.Label>
               <Stat.ValueText {...statValueStyle} fontSize="md" fontVariantNumeric="tabular-nums">
-                {measurementMeta ? format(measurementMeta) : '—'}
+                {displayMeta ? format(displayMeta) : '—'}
               </Stat.ValueText>
             </Stat.Root>
           </Box>
