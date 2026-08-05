@@ -1,4 +1,5 @@
 import { Box, HStack, Text } from '@chakra-ui/react';
+import { ui } from '../../theme';
 import {
   METER_OPTIMAL_MAX_DB,
   METER_OPTIMAL_MIN_DB,
@@ -23,42 +24,42 @@ export function LevelMeter({ meterDb, minWidth = '72px' }: LevelMeterProps) {
       <Box
         flex={1}
         position="relative"
-        h="12px"
-        borderRadius="full"
+        h="10px"
+        borderRadius="0"
         overflow="hidden"
         borderWidth="1px"
-        borderColor="whiteAlpha.200"
-        bg={`linear-gradient(90deg,
-          rgba(255, 90, 90, 0.42) 0%,
-          rgba(255, 90, 90, 0.42) ${optimalStart}%,
-          rgba(85, 214, 139, 0.55) ${optimalStart}%,
-          rgba(85, 214, 139, 0.55) ${optimalEnd}%,
-          rgba(255, 90, 90, 0.42) ${optimalEnd}%,
-          rgba(255, 90, 90, 0.42) 100%)`}
+        borderColor={ui.colors.border}
+        bg={ui.colors.inset}
       >
         <Box
           position="absolute"
           top="0"
           bottom="0"
+          left={`${optimalStart}%`}
+          w={`${optimalEnd - optimalStart}%`}
+          bg="rgba(82,209,182,.25)"
+          pointerEvents="none"
+        />
+        <Box
+          position="absolute"
+          top="0"
+          bottom="0"
           left={`${levelPercent}%`}
-          w="3px"
-          borderRadius="full"
-          bg={inOptimal ? '#8ff0b8' : '#ff8a8a'}
-          boxShadow={
-            inOptimal
-              ? '0 0 8px rgba(143, 240, 184, 0.85)'
-              : '0 0 8px rgba(255, 138, 138, 0.85)'
-          }
+          w="2px"
+          borderRadius="0"
+          bg={inOptimal ? ui.colors.accent : ui.colors.danger}
           transform="translateX(-50%)"
           transition="left 0.06s linear, background 0.12s ease"
         />
       </Box>
       <Text
-        fontSize="xs"
-        color={inOptimal ? 'green.200' : 'red.200'}
+        fontSize="2xs"
+        color={inOptimal ? ui.colors.accent : ui.colors.danger}
         minW={minWidth}
         textAlign="right"
         fontVariantNumeric="tabular-nums"
+        fontFamily={ui.fonts.mono}
+        fontWeight="700"
       >
         {formatDb(meterDb)}FS
       </Text>

@@ -14,7 +14,6 @@ export function AdvancedSetupFields({
 	isTestMode = false,
 }: AdvancedSetupFieldsProps) {
 	const hardwareDisabled = isTestMode;
-	const { curve } = state;
 
 	return (
 		<Stack gap={3}>
@@ -54,7 +53,7 @@ export function AdvancedSetupFields({
 				/>
 			</SetupSection>
 
-			{isTestMode && curve.length > 0 && <TestLoadedPanel state={state} />}
+			{isTestMode && <TestLoadedPanel state={state} />}
 		</Stack>
 	);
 }

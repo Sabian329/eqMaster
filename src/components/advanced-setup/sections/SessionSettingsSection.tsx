@@ -4,6 +4,7 @@ import {
   Button,
   Field,
   Flex,
+  Grid,
   HStack,
   NativeSelect,
   SimpleGrid,
@@ -13,9 +14,9 @@ import {
 import type { MeasurementCount } from '../../../types';
 import type { RoomEqState } from '../../../hooks/useRoomEq';
 import { meterOptimalRangeLabel } from '../../../utils/format';
-import { badgeStyles, buttonStyles, fieldStyles, setupSectionStyles } from '../../../theme';
+import { badgeStyles, buttonStyles, fieldStyles, setupSectionStyles, ui } from '../../../theme';
 import { FilePicker, FormHelper, FormLabel, LevelMeter } from '../../shared';
-import { MEASUREMENT_COUNT_OPTIONS } from '../constants';
+import { MEASUREMENT_COUNT_OPTIONS, MOCK_PRESET_COUNT } from '../constants';
 
 interface SessionSettingsSectionProps {
   state: RoomEqState;
@@ -46,7 +47,7 @@ export function SessionSettingsSection({ state, isTestMode }: SessionSettingsSec
         </NativeSelect.Root>
         <FormHelper>
           {isTestMode
-            ? 'Each mock run varies slightly — useful for testing averaging.'
+            ? 'Each mock preset can include multiple averaged runs.'
             : 'Run multiple sweeps and average — reduces noise and seat-to-seat variation.'}
         </FormHelper>
       </Field.Root>
@@ -94,10 +95,10 @@ export function CalibrationLevelSection({
       >
         <Flex justify="space-between" align="flex-start" gap={3} mb={3} flexWrap="wrap">
           <Stack gap={0.5} flex={1}>
-            <Text fontSize="sm" fontWeight="semibold" color="gray.200">
+            <Text fontSize="xs" fontWeight="700" color={ui.colors.text} letterSpacing="0.04em" textTransform="uppercase">
               Pre-measurement level check
             </Text>
-            <Text fontSize="xs" color="gray.500" lineHeight="1.55">
+            <Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.55">
               {isTestMode
                 ? 'Unavailable in test mode — no live audio.'
                 : `Pink noise at sweep level with live mic meter. Aim for the green zone (${meterOptimalRangeLabel()}).`}
@@ -106,7 +107,7 @@ export function CalibrationLevelSection({
           {!meterActive ? (
             <Button
               size="sm"
-              borderRadius="lg"
+              borderRadius="2px"
               {...buttonStyles.secondary}
               disabled={hardwareDisabled}
               onClick={() => handleStartMeter().catch((e) => alert(e.message))}
@@ -116,7 +117,7 @@ export function CalibrationLevelSection({
           ) : (
             <Button
               size="sm"
-              borderRadius="lg"
+              borderRadius="2px"
               {...buttonStyles.danger}
               onClick={handleStopMeter}
             >
@@ -136,36 +137,87 @@ interface TestLoadedPanelProps {
 }
 
 export function TestLoadedPanel({ state }: TestLoadedPanelProps) {
-  const { suggestions, loadMockDemoResults, isMockMeasurement } = state;
+  const {
+    curve,
+    suggestions,
+    mockPresets,
+    selectedMockPresetId,
+    selectMockPreset,
+    regenerateMockLibrary,
+    isMockMeasurement,
+    measurementCount,
+  } = state;
+
+  const hasLibrary = mockPresets.length > 0;
+  const loaded = curve.length > 0;
 
   return (
     <Box
-      p={4}
-      borderRadius="xl"
+      p={3}
+      borderRadius="2px"
       borderWidth="1px"
-      borderColor="rgba(255,191,90,.35)"
-      bg="linear-gradient(145deg, rgba(255,191,90,.1), rgba(12,16,24,.5))"
+      borderColor={ui.colors.borderStrong}
+      bg={ui.colors.inset}
     >
-      <Text fontSize="sm" fontWeight="semibold" color="gray.100" mb={1}>
+      <Text
+        fontSize="xs"
+        fontWeight="700"
+        color={ui.colors.text}
+        mb={1}
+        letterSpacing="0.06em"
+        textTransform="uppercase"
+      >
         Test measurement loaded
       </Text>
-      <Text fontSize="xs" color="gray.500" lineHeight="1.6" mb={3}>
-        Adjust EQ on the chart below — filters and preamp update the After EQ curve in real time.
+      <Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.6" mb={3}>
+        Pick one of {MOCK_PRESET_COUNT} synthetic room responses. Each mock uses a different
+        random modal pattern
+        {measurementCount > 1 ? ` (${measurementCount} runs averaged per mock).` : '.'}{' '}
+        EQ on the chart updates live for the selected mock.
       </Text>
-      <HStack gap={2} flexWrap="wrap">
+
+      <Grid templateColumns="repeat(3, minmax(0, 1fr))" gap={2} mb={3}>
+        {Array.from({ length: MOCK_PRESET_COUNT }, (_, index) => {
+          const presetId = index + 1;
+          const isSelected = selectedMockPresetId === presetId;
+          const isReady = mockPresets.some((item) => item.id === presetId);
+
+          return (
+            <Button
+              key={presetId}
+              size="sm"
+              h="32px"
+              borderRadius="2px"
+              disabled={!isReady}
+              {...(isSelected ? buttonStyles.primary : buttonStyles.secondary)}
+              onClick={() => selectMockPreset(presetId)}
+            >
+              Mock {presetId}
+            </Button>
+          );
+        })}
+      </Grid>
+
+      <HStack gap={2} flexWrap="wrap" align="center">
         <Button
           size="sm"
-          borderRadius="lg"
+          borderRadius="2px"
           {...buttonStyles.secondary}
-          onClick={loadMockDemoResults}
+          onClick={() => regenerateMockLibrary(selectedMockPresetId)}
         >
-          Regenerate mock data
+          Regenerate all mocks
         </Button>
-        {isMockMeasurement && (
+        {loaded && isMockMeasurement ? (
           <Badge {...badgeStyles.info}>
-            {suggestions.length} filter{suggestions.length === 1 ? '' : 's'} active
+            Mock {selectedMockPresetId} · {suggestions.length} filter
+            {suggestions.length === 1 ? '' : 's'}
           </Badge>
-        )}
+        ) : null}
+        {!hasLibrary ? (
+          <Text fontSize="2xs" color={ui.colors.textDim} fontFamily={ui.fonts.mono}>
+            Generating library…
+          </Text>
+        ) : null}
       </HStack>
     </Box>
   );

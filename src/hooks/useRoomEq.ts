@@ -48,6 +48,7 @@ import {
   SOS_OVERLAY_BANDS,
   type EqShapePresetId,
 } from '../config/eqShapePresets';
+import { MOCK_PRESET_COUNT } from '../components/advanced-setup/constants';
 import { runMockMeasurement, runMockVerification, createMockMeasurementRun } from '../utils/mockMeasurement';
 import {
   MEASUREMENT_PRESETS,
@@ -59,6 +60,12 @@ import type { FilterOverlay } from '../chart/drawFilterOverlays';
 
 const RUN_COLORS = ['#8ec5ff', '#55d68b', '#ffbf5a'];
 const AUTO_EQ_MAX_CORRECTION_HZ = 1000;
+
+export interface MockPreset {
+  id: number;
+  label: string;
+  runs: MeasurementRun[];
+}
 
 function getDeviceStatusMessage(
   mediaPermissionGranted: boolean,
@@ -187,6 +194,9 @@ export function useRoomEq() {
   const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
 
   const [setupMode, setSetupMode] = useState<SetupMode>('live');
+  const [mockLibraryGeneration, setMockLibraryGeneration] = useState(0);
+  const [mockPresets, setMockPresets] = useState<MockPreset[]>([]);
+  const [selectedMockPresetId, setSelectedMockPresetId] = useState(1);
 
   const isTestMode = setupMode === 'test';
 
@@ -754,48 +764,85 @@ export function useRoomEq() {
     );
   }, [setStatus, clearVerification]);
 
-  const loadMockDemoResults = useCallback(() => {
-    const { inputLabel, outputLabel } = getDeviceLabels();
-    const runs: MeasurementRun[] = [];
+  const buildMockPreset = useCallback(
+    (presetId: number, seedSalt: number): MockPreset => {
+      const { inputLabel, outputLabel } = getDeviceLabels();
+      const runs: MeasurementRun[] = [];
 
-    for (let runIndex = 1; runIndex <= measurementCount; runIndex++) {
-      const { curve: mockCurve, measurementMeta } = createMockMeasurementRun({
-        fMin: fStart,
-        fMax: fEnd,
-        smoothing,
-        durationSeconds: duration,
-        levelDb: SWEEP_LEVEL_DB,
-        channel,
-        runIndex,
-        inputLabel,
-        outputLabel,
-      });
+      for (let runIndex = 1; runIndex <= measurementCount; runIndex += 1) {
+        const { curve: mockCurve, measurementMeta } = createMockMeasurementRun({
+          fMin: fStart,
+          fMax: fEnd,
+          smoothing,
+          durationSeconds: duration,
+          levelDb: SWEEP_LEVEL_DB,
+          channel,
+          runIndex,
+          seedSalt: seedSalt + presetId * 47 + runIndex * 3,
+          inputLabel,
+          outputLabel,
+        });
 
-      runs.push({
-        index: runIndex,
-        label: `Mock ${runIndex}`,
-        curve: mockCurve,
-        suggestions: [],
-        meta: measurementMeta,
-      });
-    }
+        runs.push({
+          index: runIndex,
+          label:
+            measurementCount > 1
+              ? `Mock ${presetId} · run ${runIndex}`
+              : `Mock ${presetId}`,
+          curve: mockCurve,
+          suggestions: [],
+          meta: measurementMeta,
+        });
+      }
 
-    applySessionResults(runs);
-  }, [
-    applySessionResults,
-    channel,
-    duration,
-    fEnd,
-    fStart,
-    getDeviceLabels,
-    measurementCount,
-    smoothing,
-  ]);
+      return {
+        id: presetId,
+        label: `Mock ${presetId}`,
+        runs,
+      };
+    },
+    [channel, duration, fEnd, fStart, getDeviceLabels, measurementCount, smoothing],
+  );
+
+  const regenerateMockLibrary = useCallback(
+    (selectId = selectedMockPresetId) => {
+      const nextGeneration = mockLibraryGeneration + 1;
+      setMockLibraryGeneration(nextGeneration);
+
+      const presets = Array.from({ length: MOCK_PRESET_COUNT }, (_, index) =>
+        buildMockPreset(index + 1, nextGeneration * 1000),
+      );
+      setMockPresets(presets);
+
+      const safeId = Math.min(Math.max(1, selectId), MOCK_PRESET_COUNT);
+      setSelectedMockPresetId(safeId);
+      applySessionResults(presets[safeId - 1].runs);
+    },
+    [
+      applySessionResults,
+      buildMockPreset,
+      mockLibraryGeneration,
+      selectedMockPresetId,
+    ],
+  );
+
+  const selectMockPreset = useCallback(
+    (presetId: number) => {
+      const preset = mockPresets.find((item) => item.id === presetId);
+      if (!preset) return;
+      setSelectedMockPresetId(presetId);
+      applySessionResults(preset.runs);
+    },
+    [applySessionResults, mockPresets],
+  );
+
+  const loadMockDemoResults = regenerateMockLibrary;
 
   useEffect(() => {
-    if (setupMode !== 'test' || sessionOpen || running || curve.length > 0) return;
-    loadMockDemoResults();
-  }, [setupMode, sessionOpen, running, curve.length, loadMockDemoResults]);
+    if (setupMode !== 'test' || sessionOpen || running) return;
+    if (mockPresets.length > 0) return;
+    regenerateMockLibrary(1);
+  }, [setupMode, sessionOpen, running, mockPresets.length, regenerateMockLibrary]);
 
   const stopSessionMeter = useCallback(async () => {
     await sessionMeterRef.current?.stop();
@@ -1197,6 +1244,10 @@ export function useRoomEq() {
     setupMode,
     setSetupMode,
     isTestMode,
+    mockPresets,
+    selectedMockPresetId,
+    selectMockPreset,
+    regenerateMockLibrary,
     loadMockDemoResults,
     isMockMeasurement: measurementMeta?.recorderMode === 'mock',
     curve,

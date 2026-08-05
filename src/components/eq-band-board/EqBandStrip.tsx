@@ -1,12 +1,36 @@
+import type { ReactNode } from 'react';
 import { Box, Checkbox, HStack, IconButton, Stack, Text } from '@chakra-ui/react';
 import { formatFrequency } from '../../utils/format';
 import { isCustomSuggestion, suggestionKey } from '../../utils/suggestionQ';
 import { BipolarGainFader } from './controls/BipolarGainFader';
 import { QKnob } from './controls/QKnob';
 import { BandSpeakerIcons } from './BandSpeakerIcons';
-import { STRIP_LAYOUT } from './constants';
+import { STRIP_CHROME, STRIP_LAYOUT } from './constants';
 import type { EqBandStripProps } from './types';
 import { bandColorForIndex, formatGainLabel, getFilterTypeLabel } from './utils';
+
+function StripReadout({
+  children,
+  accent = false,
+}: {
+  children: ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <Box
+      w="full"
+      px={1}
+      py={0.5}
+      borderWidth="1px"
+      borderColor={accent ? STRIP_CHROME.borderCustom : STRIP_CHROME.labelBorder}
+      bg={STRIP_CHROME.labelBg}
+      borderRadius="2px"
+      textAlign="center"
+    >
+      {children}
+    </Box>
+  );
+}
 
 export function EqBandStrip({
   item,
@@ -29,11 +53,11 @@ export function EqBandStrip({
       flex={`0 0 ${layout.width}`}
       w={layout.width}
       p={layout.padding}
-      borderRadius="lg"
+      borderRadius="2px"
       borderWidth="1px"
-      borderColor={isCustom ? 'rgba(255,191,90,.35)' : 'whiteAlpha.150'}
-      bg="rgba(12,16,24,.72)"
-      opacity={enabled ? 1 : 0.72}
+      borderColor={isCustom ? STRIP_CHROME.borderCustom : STRIP_CHROME.border}
+      bg={STRIP_CHROME.bg}
+      opacity={enabled ? 1 : 0.65}
     >
       <Stack gap={layout.gap} align="center" h="full">
         <HStack w="full" justify="space-between" align="center">
@@ -43,19 +67,33 @@ export function EqBandStrip({
             onCheckedChange={() => toggleSuggestionEnabled(rowKey)}
           >
             <Checkbox.HiddenInput />
-            <Checkbox.Control borderColor="whiteAlpha.400" />
+            <Checkbox.Control
+              borderColor={STRIP_CHROME.border}
+              borderRadius="2px"
+              _checked={{ bg: STRIP_CHROME.accent, borderColor: STRIP_CHROME.accent }}
+            />
           </Checkbox.Root>
           <HStack gap={1} align="center">
-            <Box w="12px" h="12px" borderRadius="sm" bg={color} title="Band color" flexShrink={0} />
+            <Box
+              w="10px"
+              h="10px"
+              borderRadius="0"
+              bg={color}
+              borderWidth="1px"
+              borderColor="rgba(255,255,255,.15)"
+              title="Band color"
+              flexShrink={0}
+            />
             {removeBand ? (
               <IconButton
                 aria-label="Remove band"
                 size="2xs"
                 variant="ghost"
-                color="gray.400"
-                minW="18px"
-                h="18px"
-                _hover={{ color: 'red.300', bg: 'whiteAlpha.100' }}
+                color={STRIP_CHROME.textMuted}
+                minW="16px"
+                h="16px"
+                borderRadius="2px"
+                _hover={{ color: STRIP_CHROME.accent, bg: 'rgba(82,209,182,.08)' }}
                 onClick={() => removeBand(rowKey)}
               >
                 ×
@@ -66,16 +104,17 @@ export function EqBandStrip({
 
         <BandSpeakerIcons color={color} opacity={enabled ? 0.92 : 0.35} />
 
-        <Text
-          fontSize="2xs"
-          fontWeight="bold"
-          color="gray.200"
-          textAlign="center"
-          lineHeight="1.2"
-          minH={compact ? '22px' : '28px'}
-        >
-          {formatFrequency(item.frequency)}
-        </Text>
+        <StripReadout>
+          <Text
+            fontSize="2xs"
+            fontWeight="700"
+            color={STRIP_CHROME.text}
+            lineHeight="1.2"
+            fontFamily="mono"
+          >
+            {formatFrequency(item.frequency)}
+          </Text>
+        </StripReadout>
 
         <Box h={`${layout.faderHeight}px`} w="full" px={0.5}>
           <BipolarGainFader
@@ -87,30 +126,34 @@ export function EqBandStrip({
           />
         </Box>
 
-        <Text
-          fontSize="2xs"
-          fontWeight="semibold"
-          color={enabled ? 'gray.100' : 'gray.500'}
-          fontVariantNumeric="tabular-nums"
-          textAlign="center"
-          minH="14px"
-        >
-          {formatGainLabel(item)}
-        </Text>
+        <StripReadout accent={enabled && gain !== 0}>
+          <Text
+            fontSize="2xs"
+            fontWeight="700"
+            color={enabled ? STRIP_CHROME.text : STRIP_CHROME.textMuted}
+            fontVariantNumeric="tabular-nums"
+            fontFamily="mono"
+          >
+            {formatGainLabel(item)}
+          </Text>
+        </StripReadout>
 
         <QKnob
           value={item.q}
           onChange={(value) => setSuggestionQ(rowKey, value)}
           compact={compact}
+          accentColor={color}
         />
 
         <Text
           fontSize="2xs"
-          color="gray.500"
+          color={STRIP_CHROME.textMuted}
           textAlign="center"
-          lineHeight="1.35"
-          minH={compact ? '24px' : '32px'}
-          px={1}
+          lineHeight="1.2"
+          minH={compact ? '20px' : '24px'}
+          px={0.5}
+          letterSpacing="0.04em"
+          textTransform="uppercase"
         >
           {getFilterTypeLabel(item)}
         </Text>

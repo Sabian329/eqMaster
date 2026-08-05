@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Button, Card, Flex, Heading, HStack, Stack, Text } from '@chakra-ui/react';
-import { buttonStyles, panelStyles } from '../../theme';
+import { buttonStyles, panelStyles, ui } from '../../theme';
 import { PresetExportCard } from './PresetExportCard';
 import { ResultsEmptyState } from './ResultsEmptyState';
 import type { ResultsPanelProps } from './types';
@@ -33,18 +33,18 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
       <Card.Header {...panelStyles.header}>
         <Flex justify="space-between" align="center" gap={4} flexWrap="wrap">
           <Stack gap={1}>
-            <Heading size="md" fontWeight="semibold" color="gray.100">
+            <Heading size="sm" fontWeight="700" color={ui.colors.text} letterSpacing="0.04em" textTransform="uppercase">
               Export & preset
             </Heading>
-            <Text fontSize="xs" color="gray.500" lineHeight="1.6">
+            <Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.6">
               EQ editing is directly under the frequency chart above.
             </Text>
           </Stack>
           <HStack gap={2}>
-            <Button size="sm" borderRadius="lg" {...buttonStyles.secondary} onClick={exportCsv}>
+            <Button size="sm" borderRadius="2px" {...buttonStyles.secondary} onClick={exportCsv}>
               Export CSV
             </Button>
-            <Button size="sm" borderRadius="lg" {...buttonStyles.secondary} onClick={exportJson}>
+            <Button size="sm" borderRadius="2px" {...buttonStyles.secondary} onClick={exportJson}>
               Export JSON
             </Button>
           </HStack>

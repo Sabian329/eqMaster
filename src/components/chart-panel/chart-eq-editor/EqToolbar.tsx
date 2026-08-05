@@ -11,7 +11,7 @@ import {
 } from "@chakra-ui/react";
 import type { RoomEqState } from "../../../hooks/useRoomEq";
 import { EQ_SHAPE_PRESETS } from "../../../config/eqShapePresets";
-import { buttonStyles, fieldStyles } from "../../../theme";
+import { buttonStyles, fieldStyles, ui } from "../../../theme";
 import { MeasurementProgress } from "../../shared";
 
 interface EqToolbarProps {
@@ -69,8 +69,8 @@ export function EqToolbar({ state }: EqToolbarProps) {
 	return (
 		<Box
 			borderBottomWidth="1px"
-			borderColor="whiteAlpha.100"
-			bg="rgba(12,16,24,.95)"
+			borderColor={ui.colors.border}
+			bg={ui.colors.panelRaised}
 		>
 			<Grid
 				px={{ base: 3, md: 4 }}
@@ -106,7 +106,7 @@ export function EqToolbar({ state }: EqToolbarProps) {
 									key={preset.id}
 									size="sm"
 									h="32px"
-									borderRadius="md"
+									borderRadius="2px"
 									{...(eqShapePreset === preset.id
 										? buttonStyles.primary
 										: buttonStyles.secondary)}
@@ -118,7 +118,7 @@ export function EqToolbar({ state }: EqToolbarProps) {
 							<Button
 								size="sm"
 								h="32px"
-								borderRadius="md"
+								borderRadius="2px"
 								aria-pressed={sosOverlayEnabled}
 								{...(sosOverlayEnabled
 									? buttonStyles.primary
@@ -138,8 +138,9 @@ export function EqToolbar({ state }: EqToolbarProps) {
 						</Field.Label>
 						<Text
 							fontSize="2xs"
-							color="gray.400"
+							color={ui.colors.textMuted}
 							fontVariantNumeric="tabular-nums"
+							fontFamily={ui.fonts.mono}
 						>
 							{presetPreamp.toFixed(1)} dB
 						</Text>
@@ -173,7 +174,7 @@ export function EqToolbar({ state }: EqToolbarProps) {
 							{hasVerification && verificationMeta && !verificationRunning ? (
 								<Text
 									fontSize="2xs"
-									color="gray.600"
+									color={ui.colors.textDim}
 									fontVariantNumeric="tabular-nums"
 								>
 									recorded
@@ -192,11 +193,11 @@ export function EqToolbar({ state }: EqToolbarProps) {
 								<Button
 									size="sm"
 									h="32px"
-									borderRadius="md"
+									borderRadius="2px"
 									variant="ghost"
-									color="gray.400"
+									color={ui.colors.textMuted}
 									px={3}
-									_hover={{ color: "gray.200", bg: "whiteAlpha.80" }}
+									_hover={{ color: ui.colors.text, bg: ui.colors.inset }}
 									disabled={verificationRunning}
 									onClick={clearVerification}
 								>
@@ -206,7 +207,7 @@ export function EqToolbar({ state }: EqToolbarProps) {
 							<Button
 								size="sm"
 								h="32px"
-								borderRadius="md"
+								borderRadius="2px"
 								whiteSpace="nowrap"
 								disabled={!verifyEnabled}
 								{...buttonStyles.primary}
@@ -234,7 +235,8 @@ export function EqToolbar({ state }: EqToolbarProps) {
 			{hasVerification && verificationMeta && !verificationRunning ? (
 				<Text
 					fontSize="2xs"
-					color="gray.500"
+					color={ui.colors.textDim}
+					fontFamily={ui.fonts.mono}
 					px={{ base: 3, md: 4 }}
 					pb={3}
 					fontVariantNumeric="tabular-nums"

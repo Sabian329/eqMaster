@@ -1,5 +1,5 @@
 import { Box, Card } from '@chakra-ui/react';
-import { panelStyles } from '../../theme';
+import { panelStyles, ui } from '../../theme';
 import { ChartEqEditor } from './chart-eq-editor';
 import { resolveChartFrequencyRange } from './constants';
 import { ChartHeader } from './ChartHeader';
@@ -45,8 +45,10 @@ export function ChartPanel({ state }: ChartPanelProps) {
         position="sticky"
         top={{ base: 0, md: 2 }}
         zIndex={2}
-        bg="chart.bg"
-        boxShadow="0 12px 32px rgba(0,0,0,.45)"
+        bg={ui.colors.chart}
+        boxShadow="none"
+        borderTopWidth="1px"
+        borderColor={ui.colors.border}
       >
         <Box minH={{ base: '220px', md: '260px' }} position="relative">
           <FrequencyChart

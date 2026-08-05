@@ -10,6 +10,7 @@ export interface MockMeasurementOptions {
   levelDb: number;
   channel: ChannelMode;
   runIndex: number;
+  seedSalt?: number;
   inputLabel?: string;
   outputLabel?: string;
 }
@@ -66,8 +67,11 @@ function buildMockFeatures(
   fMin: number,
   fMax: number,
   runIndex: number,
+  seedSalt = 0,
 ): MockFeature[] {
-  const rng = createSeededRandom(0x9e37_79b9 + runIndex * 7_919);
+  const rng = createSeededRandom(
+    0x9e37_79b9 + runIndex * 7_919 + seedSalt * 0x85eb_ca6b,
+  );
   const features: MockFeature[] = [];
 
   const bassModes = 8 + Math.floor(rng() * 5);
@@ -148,9 +152,17 @@ function smoothMockCurve(points: CurvePoint[], fraction: number): CurvePoint[] {
 function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
   const usableMax = Math.min(options.fMax, 20000);
   const pointCount = 520;
-  const rng = createSeededRandom(0x51ed_2701 + options.runIndex * 13_131);
+  const seedSalt = options.seedSalt ?? 0;
+  const rng = createSeededRandom(
+    0x51ed_2701 + options.runIndex * 13_131 + seedSalt * 9_973,
+  );
   const runShift = (options.runIndex - 1) * 0.22;
-  const mockFeatures = buildMockFeatures(options.fMin, usableMax, options.runIndex);
+  const mockFeatures = buildMockFeatures(
+    options.fMin,
+    usableMax,
+    options.runIndex,
+    seedSalt,
+  );
   const raw: CurvePoint[] = [];
 
   for (let index = 0; index < pointCount; index += 1) {

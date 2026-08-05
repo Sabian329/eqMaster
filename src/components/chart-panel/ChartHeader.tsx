@@ -1,5 +1,6 @@
 import { Box, Checkbox, Flex, Heading, HStack, Stack, Text } from '@chakra-ui/react';
 import type { ChartSeries } from '../../types';
+import { ui } from '../../theme';
 import { FLAT_TARGET_LABEL } from '../../utils/toneProfile';
 
 interface ChartHeaderProps {
@@ -27,15 +28,15 @@ export function ChartHeader({
   return (
     <Flex justify="space-between" align="flex-start" gap={4} flexWrap="wrap">
       <Stack gap={1} flex="1 1 240px">
-        <Heading size="md" fontWeight="semibold" color="gray.100">
+        <Heading size="sm" fontWeight="700" color={ui.colors.text} letterSpacing="0.04em" textTransform="uppercase">
           Frequency response
         </Heading>
         {(hasCorrected || hasVerified) && (
-          <Text fontSize="xs" color="gray.500" lineHeight="1.6" maxW="620px">
+          <Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.6" maxW="620px">
             {hasCorrected && (
               <>
                 Orange{' '}
-                <Text as="span" color="#ff9f6b" fontWeight="semibold">
+                <Text as="span" color="#ff9f6b" fontWeight="700">
                   After EQ
                 </Text>{' '}
                 is the predicted curve — updates live as you edit bands.{' '}
@@ -44,7 +45,7 @@ export function ChartHeader({
             {hasVerified && (
               <>
                 Green{' '}
-                <Text as="span" color="#55d68b" fontWeight="semibold">
+                <Text as="span" color={ui.colors.accent} fontWeight="700">
                   Verified
                 </Text>{' '}
                 is a second measurement with EQ applied to the sweep.{' '}
@@ -55,7 +56,7 @@ export function ChartHeader({
         )}
       </Stack>
       <Stack gap={2} align="flex-start">
-        <Text fontSize="2xs" color="gray.600" textTransform="uppercase" letterSpacing="0.06em">
+        <Text fontSize="2xs" color={ui.colors.textDim} textTransform="uppercase" letterSpacing="0.08em" fontFamily={ui.fonts.mono}>
           Show on chart
         </Text>
         <HStack gap={3} fontSize="xs" flexWrap="wrap" align="center">
@@ -86,15 +87,16 @@ export function ChartHeader({
                 <Checkbox.HiddenInput />
                 <HStack gap={2} align="center">
                   <Checkbox.Control
-                    borderColor="whiteAlpha.350"
-                    bg="rgba(0,0,0,.25)"
-                    _checked={{ bg: 'brand.400', borderColor: 'brand.400' }}
+                    borderColor={ui.colors.borderStrong}
+                    borderRadius="2px"
+                    bg={ui.colors.inset}
+                    _checked={{ bg: ui.colors.accent, borderColor: ui.colors.accent }}
                   />
                   <Checkbox.Label
                     display="flex"
                     alignItems="center"
                     gap={2}
-                    color={visible ? 'gray.300' : 'gray.600'}
+                    color={visible ? ui.colors.textMuted : ui.colors.textDim}
                     opacity={visible ? 1 : 0.55}
                     cursor="pointer"
                     mb={0}
@@ -116,15 +118,16 @@ export function ChartHeader({
               <Checkbox.HiddenInput />
               <HStack gap={2} align="center">
                 <Checkbox.Control
-                  borderColor="whiteAlpha.350"
-                  bg="rgba(0,0,0,.25)"
-                  _checked={{ bg: 'brand.400', borderColor: 'brand.400' }}
+                  borderColor={ui.colors.borderStrong}
+                  borderRadius="2px"
+                  bg={ui.colors.inset}
+                  _checked={{ bg: ui.colors.accent, borderColor: ui.colors.accent }}
                 />
                 <Checkbox.Label
                   display="flex"
                   alignItems="center"
                   gap={2}
-                  color={showCorrectionFills ? 'gray.300' : 'gray.600'}
+                  color={showCorrectionFills ? ui.colors.textMuted : ui.colors.textDim}
                   opacity={showCorrectionFills ? 1 : 0.55}
                   cursor="pointer"
                   mb={0}
@@ -158,7 +161,7 @@ function SeriesSwatch({ item, dimmed }: { item: ChartSeries; dimmed: boolean }) 
   }
 
   return (
-    <Box w="18px" h="3px" borderRadius="sm" bg={item.color} opacity={opacity} />
+    <Box w="18px" h="2px" borderRadius="0" bg={item.color} opacity={opacity} />
   );
 }
 
@@ -166,12 +169,12 @@ function CorrectionFillSwatch({ dimmed }: { dimmed: boolean }) {
   return (
     <Box
       w="18px"
-      h="10px"
-      borderRadius="sm"
+      h="8px"
+      borderRadius="0"
       opacity={dimmed ? 0.35 : 0.9}
-      bg="linear-gradient(90deg, rgba(255,159,107,.55), rgba(85,214,139,.45), rgba(101,169,255,.45))"
+      bg="linear-gradient(90deg, rgba(255,159,107,.55), rgba(82,209,182,.45), rgba(101,169,255,.45))"
       borderWidth="1px"
-      borderColor="whiteAlpha.200"
+      borderColor={ui.colors.border}
     />
   );
 }

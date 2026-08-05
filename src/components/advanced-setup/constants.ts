@@ -19,6 +19,9 @@ export const MEASUREMENT_COUNT_OPTIONS: { value: MeasurementCount; label: string
   { value: 3, label: '3 measurements (averaged)' },
 ];
 
+/** Number of pre-generated mock presets available in Test tab. */
+export const MOCK_PRESET_COUNT = 6;
+
 export const CHANNEL_OPTIONS = [
   { value: 'both', label: 'L + R (stereo)' },
   { value: 'left', label: 'Left only' },

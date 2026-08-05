@@ -1,6 +1,6 @@
 import { useCallback, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { Box, Flex, Stack, Text } from '@chakra-ui/react';
-import { GAIN_TICKS } from '../constants';
+import { GAIN_TICKS, STRIP_CHROME } from '../constants';
 import type { BipolarGainFaderProps } from '../types';
 import { gainToTopPercent, topPercentToGain } from '../utils';
 import { clampBipolarGain } from '../../../utils/suggestionQ';
@@ -51,9 +51,10 @@ export function BipolarGainFader({
           <Text
             key={tick}
             fontSize="6px"
-            color="gray.600"
+            color={STRIP_CHROME.textMuted}
             lineHeight="1"
             fontVariantNumeric="tabular-nums"
+            fontFamily="mono"
             userSelect="none"
           >
             {tick > 0 ? `+${tick}` : tick}
@@ -65,7 +66,7 @@ export function BipolarGainFader({
         ref={trackRef}
         position="relative"
         flex="1"
-        maxW="14px"
+        maxW="12px"
         h="full"
         cursor={disabled ? 'default' : 'ns-resize'}
         touchAction="none"
@@ -77,15 +78,15 @@ export function BipolarGainFader({
           <Box
             key={tick}
             position="absolute"
-            left="-3px"
-            right="-3px"
+            left="-2px"
+            right="-2px"
             top={`${gainToTopPercent(tick)}%`}
             transform="translateY(-50%)"
             pointerEvents="none"
           >
             <Box
               h="1px"
-              bg={tick === 0 ? 'whiteAlpha.500' : 'whiteAlpha.250'}
+              bg={tick === 0 ? STRIP_CHROME.borderCustom : STRIP_CHROME.border}
               w="full"
             />
           </Box>
@@ -94,23 +95,23 @@ export function BipolarGainFader({
         <Box
           position="absolute"
           inset="0"
-          borderRadius="full"
-          bg="whiteAlpha.120"
+          borderRadius="2px"
+          bg={STRIP_CHROME.labelBg}
           borderWidth="1px"
-          borderColor="whiteAlpha.200"
+          borderColor={STRIP_CHROME.border}
           pointerEvents="none"
         />
 
         {!disabled && fillHeight > 0.5 && (
           <Box
             position="absolute"
-            left="2px"
-            right="2px"
+            left="1px"
+            right="1px"
             top={`${fillTop}%`}
             h={`${fillHeight}%`}
-            borderRadius="full"
+            borderRadius="1px"
             bg={color}
-            opacity={0.92}
+            opacity={0.95}
             pointerEvents="none"
           />
         )}
@@ -121,16 +122,26 @@ export function BipolarGainFader({
             left="50%"
             top={`${thumbTop}%`}
             transform="translate(-50%, -50%)"
-            w="14px"
-            h="14px"
-            borderRadius="full"
-            bg="gray.100"
+            w="12px"
+            h="10px"
+            borderRadius="2px"
+            bg="#1a1f28"
             borderWidth="2px"
             borderColor={color}
-            boxShadow="0 2px 6px rgba(0,0,0,.45)"
+            boxShadow="none"
             pointerEvents="none"
             zIndex={2}
-          />
+          >
+            <Box
+              position="absolute"
+              top="50%"
+              left="1px"
+              right="1px"
+              h="1px"
+              bg={color}
+              transform="translateY(-50%)"
+            />
+          </Box>
         )}
       </Box>
 
@@ -138,9 +149,9 @@ export function BipolarGainFader({
         {GAIN_TICKS.map((tick) => (
           <Box
             key={`r-${tick}`}
-            w="5px"
+            w="4px"
             h="1px"
-            bg={tick === 0 ? 'whiteAlpha.500' : 'whiteAlpha.250'}
+            bg={tick === 0 ? STRIP_CHROME.borderCustom : STRIP_CHROME.border}
             alignSelf="flex-end"
           />
         ))}

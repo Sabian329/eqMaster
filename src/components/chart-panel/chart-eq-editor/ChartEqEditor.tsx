@@ -1,4 +1,5 @@
 import { Box } from '@chakra-ui/react';
+import { ui } from '../../../theme';
 import { EqBandBoard } from '../../eq-band-board';
 import { EqToolbar } from './EqToolbar';
 import type { ChartEqEditorProps } from '../types';
@@ -16,7 +17,7 @@ export function ChartEqEditor({ state }: ChartEqEditorProps) {
   if (!curve.length) return null;
 
   return (
-    <Box borderTopWidth="1px" borderColor="whiteAlpha.150" bg="rgba(8,10,16,.92)">
+    <Box borderTopWidth="1px" borderColor={ui.colors.border} bg={ui.colors.inset}>
       <EqBandBoard
         suggestions={suggestions}
         setSuggestionQ={setSuggestionQ}

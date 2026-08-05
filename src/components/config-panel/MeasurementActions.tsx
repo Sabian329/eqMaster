@@ -1,5 +1,5 @@
 import { Box, Button, Checkbox, Flex, Stack, Text } from '@chakra-ui/react';
-import { buttonStyles, launchPanelStyles } from '../../theme';
+import { buttonStyles, launchPanelStyles, ui } from '../../theme';
 import { MeasurementProgress } from '../shared';
 import type { MeasurementActionsProps } from './types';
 
@@ -42,11 +42,12 @@ export function MeasurementActions({ state }: MeasurementActionsProps) {
               <Checkbox.HiddenInput />
               <Checkbox.Control
                 mt={0.5}
-                borderColor="whiteAlpha.300"
-                bg="rgba(0,0,0,.25)"
-                _checked={{ bg: 'brand.400', borderColor: 'brand.400' }}
+                borderColor={ui.colors.borderStrong}
+                borderRadius="2px"
+                bg={ui.colors.inset}
+                _checked={{ bg: ui.colors.accent, borderColor: ui.colors.accent }}
               />
-              <Checkbox.Label fontSize="sm" lineHeight="1.6" color="gray.400">
+              <Checkbox.Label fontSize="xs" lineHeight="1.6" color={ui.colors.textMuted}>
                 Volume is low, direct monitoring is off, and the microphone is positioned
                 safely away from feedback.
               </Checkbox.Label>
@@ -57,20 +58,20 @@ export function MeasurementActions({ state }: MeasurementActionsProps) {
         <Button
           size="lg"
           minW={{ lg: '220px' }}
-          h="52px"
-          borderRadius="xl"
+          h="48px"
+          borderRadius="2px"
           disabled={!measureEnabled}
           {...buttonStyles.primary}
-          fontSize="md"
+          fontSize="sm"
           onClick={() => handleStartSession().catch((e) => alert(e.message))}
         >
           {isTestMode ? 'Run test session' : 'Start live session'}
         </Button>
       </Flex>
 
-      <Box mt={5} pt={4} borderTopWidth="1px" borderColor="whiteAlpha.80">
+      <Box mt={4} pt={3} borderTopWidth="1px" borderColor={ui.colors.border}>
         <MeasurementProgress statusText={statusText} progress={progress} />
-        <Text fontSize="xs" color="gray.600" lineHeight="1.65" mt={3}>
+        <Text fontSize="2xs" color={ui.colors.textDim} lineHeight="1.65" mt={2} fontFamily={ui.fonts.mono}>
           Relative display: the ~500–2000 Hz range is normalized to 0 dB. Without an SPL
           calibrator, absolute in-room loudness is not shown.
         </Text>
