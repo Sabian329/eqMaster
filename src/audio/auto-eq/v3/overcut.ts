@@ -18,9 +18,9 @@ export function getOvercutPenaltyMultiplier(frequency: number): number {
 export function getMaximumBroadCutDb(frequency: number): number {
 	if (frequency < 200) return -15;
 	if (frequency < 1_000) return -8;
-	if (frequency < 5_000) return -4.5;
-	if (frequency < 10_000) return -3.5;
-	return -2.5;
+	if (frequency < 5_000) return -5.0;
+	if (frequency < 10_000) return -4.0;
+	return -3.0;
 }
 
 /** Safety pass reacts only after broad predicted falls below target by more than this. */

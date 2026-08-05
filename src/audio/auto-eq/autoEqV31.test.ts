@@ -28,7 +28,12 @@ import { prepareMeasurement } from "./v3/prepareMeasurement";
 import { DEFAULT_V3_OPTIONS } from "./v3/constants";
 import { runFinalSafetyPass } from "./v3/finalSafetyPass";
 import { createMockMeasurementRun } from "../../utils/mockMeasurement";
+import {
+	buildCombinedFilterResponseCurve,
+	buildCorrectedCurve,
+} from "../../utils/correctedCurve";
 import { getTargetLabel } from "./v3/target";
+import { mapAutoEqV3ResultToPipeline } from "../../utils/autoEqBridgeV3";
 import type { GeneratedEqFilter, FrequencyPoint } from "./v3/types";
 
 const SAMPLE_RATE = 48_000;
@@ -98,6 +103,31 @@ function buildRepeated3kHzMeasurements(): FrequencyPoint[][] {
 }
 
 describe("auto-eq V3.1 units", () => {
+	it("keeps chart predicted identical to measured + combined RBJ response", () => {
+		const measurement = buildHighFrequencySynthetic();
+		const result = generateAutoEqV3([measurement], {
+			...DEFAULT_V3_OPTIONS,
+			sampleRate: SAMPLE_RATE,
+			seed: 42,
+		});
+		const pipeline = mapAutoEqV3ResultToPipeline(result);
+		const predicted = buildCorrectedCurve(result.measured, pipeline.suggestions, 0, {
+			responseModel: "rbj",
+			sampleRate: SAMPLE_RATE,
+			clampDisplay: false,
+		});
+		const combined = buildCombinedFilterResponseCurve(
+			result.measured,
+			pipeline.suggestions,
+			{ responseModel: "rbj", sampleRate: SAMPLE_RATE },
+		);
+
+		for (let index = 0; index < predicted.length; index += 1) {
+			const delta = predicted[index].db - result.measured[index].db;
+			expect(delta).toBeCloseTo(combined[index].db, 6);
+		}
+	}, 30_000);
+
 	it("does not include preamp in predicted response", () => {
 		const measurement = buildHighFrequencySynthetic();
 		const prepared = prepareMeasurement([measurement], {
@@ -190,7 +220,7 @@ describe("auto-eq V3.1 units", () => {
 		expect(getCorrectionStrength(500, 1, 1)).toBeCloseTo(0.8, 5);
 		expect(getCorrectionStrength(3_000, 1, 1)).toBeCloseTo(0.65 * 0.8, 5);
 		expect(getCorrectionStrength(7_000, 1, 1)).toBeCloseTo(0.5 * 0.8, 5);
-		expect(getCorrectionStrength(12_000, 1, 1)).toBeCloseTo(0.35 * 0.8, 5);
+		expect(getCorrectionStrength(12_000, 1, 1)).toBeCloseTo(0.4 * 0.8, 5);
 	});
 
 	it("scales correction strength by measurement count", () => {
@@ -212,10 +242,10 @@ describe("auto-eq V3.1 units", () => {
 		expect(limits1k.maxBoostDb).toBe(1.5);
 
 		const limits5k = getFrequencyLimits(7_000, "PK", { measurementCount: 1 });
-		expect(limits5k.maxCutDb).toBe(-2.5);
+		expect(limits5k.maxCutDb).toBe(-3);
 
 		const limits10k = getFrequencyLimits(12_000, "PK", { measurementCount: 1 });
-		expect(limits10k.maxCutDb).toBe(-1.5);
+		expect(limits10k.maxCutDb).toBe(-2.5);
 
 		const extended = getFrequencyLimits(3_000, "PK", {
 			measurementCount: 3,
@@ -274,7 +304,9 @@ describe("auto-eq V3.1 units", () => {
 			db: -6,
 		}));
 		const limitPenalty = computeBroadCutLimitPenalty(smoothToBroad(combined));
-		expect(getMaximumBroadCutDb(3_000)).toBe(-4.5);
+		expect(getMaximumBroadCutDb(3_000)).toBe(-5.0);
+		expect(getMaximumBroadCutDb(7_000)).toBe(-4.0);
+		expect(getMaximumBroadCutDb(12_000)).toBe(-3.0);
 		expect(limitPenalty).toBeGreaterThan(0);
 	});
 

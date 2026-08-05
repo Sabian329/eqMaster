@@ -20,7 +20,7 @@ export interface MockMeasurementOptions {
   channel: ChannelMode;
   runIndex: number;
   seedSalt?: number;
-  /** Library preset id — presets 6–9 use fixed resonance stress-test profiles. */
+  /** Library preset id — presets 5–9 use fixed stress-test profiles. */
   presetId?: number;
   inputLabel?: string;
   outputLabel?: string;
@@ -133,12 +133,18 @@ function buildMockFeatures(
   return features;
 }
 
-type ResonantPresetId = 6 | 7 | 8 | 9;
+type ResonantPresetId = 5 | 6 | 7 | 8 | 9;
 
 type PeakDef = [frequency: number, db: number, width: number];
 
 function isResonantPreset(presetId?: number): presetId is ResonantPresetId {
-  return presetId === 6 || presetId === 7 || presetId === 8 || presetId === 9;
+  return (
+    presetId === 5 ||
+    presetId === 6 ||
+    presetId === 7 ||
+    presetId === 8 ||
+    presetId === 9
+  );
 }
 
 function pushPeaks(
@@ -179,6 +185,135 @@ function pushNulls(
       width,
     });
   }
+}
+
+/**
+ * Mock 5 — corner placement nightmare:
+ * strong axial modes, deep SBIR nulls, wall comb filtering, jagged mids/treble.
+ */
+function buildCornerChaosFeatures(
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): MockFeature[] {
+  const features: MockFeature[] = [];
+
+  // Corner-reinforced axial / tangential / oblique bass modes (very dense).
+  const peaks: PeakDef[] = [
+    [32, 10.5, 0.018],
+    [38, 8.8, 0.017],
+    [44, 11.2, 0.016],
+    [51, 9.4, 0.018],
+    [58, 12.0, 0.015],
+    [67, 8.2, 0.019],
+    [74, 10.8, 0.016],
+    [83, 7.6, 0.02],
+    [92, 11.5, 0.015],
+    [103, 9.1, 0.018],
+    [116, 12.4, 0.014],
+    [128, 10.2, 0.015],
+    [141, 8.7, 0.017],
+    [156, 11.0, 0.015],
+    [172, 7.9, 0.019],
+    [190, 9.6, 0.017],
+    [210, 6.8, 0.021],
+    [235, 8.4, 0.019],
+    [262, 7.2, 0.022],
+    [295, 9.0, 0.02],
+    [330, 6.4, 0.024],
+    [370, 8.1, 0.022],
+    [415, 5.9, 0.025],
+    [465, 7.5, 0.023],
+    [520, 6.2, 0.026],
+    [585, 5.4, 0.028],
+    [660, 7.0, 0.025],
+    [740, 5.1, 0.029],
+    [830, 6.6, 0.027],
+    [930, 4.8, 0.03],
+    [1050, 6.3, 0.028],
+    [1180, 5.5, 0.03],
+    [1340, 4.6, 0.032],
+    [1520, 6.0, 0.03],
+    [1720, 5.2, 0.033],
+    [1950, 4.4, 0.035],
+    [2200, 5.8, 0.032],
+    [2500, 4.9, 0.034],
+    [2850, 5.5, 0.033],
+    [3250, 4.2, 0.036],
+    [3700, 5.1, 0.035],
+    [4200, 3.9, 0.038],
+    [4800, 4.7, 0.036],
+    [5450, 3.6, 0.04],
+    [6200, 4.4, 0.038],
+    [7100, 3.3, 0.042],
+    [8100, 4.0, 0.04],
+    [9200, 3.1, 0.044],
+    [10_500, 3.7, 0.042],
+    [12_000, 2.8, 0.046],
+    [13_800, 3.4, 0.044],
+    [15_800, 2.5, 0.048],
+    [18_000, 2.9, 0.046],
+  ];
+
+  // Deep corner SBIR / boundary / comb nulls — uncorrectable and brutal.
+  const nulls: PeakDef[] = [
+    [48, -11.5, 0.014],
+    [63, -9.8, 0.015],
+    [79, -12.2, 0.013],
+    [97, -10.4, 0.015],
+    [112, -8.6, 0.017],
+    [134, -13.0, 0.012],
+    [148, -9.2, 0.016],
+    [168, -11.0, 0.014],
+    [198, -10.6, 0.015],
+    [225, -8.4, 0.018],
+    [255, -12.5, 0.013],
+    [310, -9.0, 0.017],
+    [355, -10.8, 0.015],
+    [400, -7.6, 0.02],
+    [455, -11.4, 0.014],
+    [510, -8.2, 0.019],
+    [575, -10.0, 0.016],
+    [650, -7.4, 0.021],
+    [780, -9.6, 0.017],
+    [900, -11.8, 0.014],
+    [1020, -8.0, 0.02],
+    [1250, -9.4, 0.018],
+    [1480, -7.2, 0.022],
+    [1750, -10.2, 0.016],
+    [2100, -8.8, 0.019],
+    [2450, -6.8, 0.023],
+    [2900, -9.8, 0.017],
+    [3400, -7.5, 0.021],
+    [4000, -10.5, 0.016],
+    [4700, -6.6, 0.024],
+    [5600, -8.6, 0.02],
+    [6800, -7.0, 0.023],
+    [8200, -9.2, 0.018],
+    [9800, -6.4, 0.025],
+    [11_500, -8.0, 0.021],
+    [14_000, -5.8, 0.028],
+    [16_500, -7.4, 0.024],
+  ];
+
+  pushPeaks(features, peaks, fMin, fMax, runIndex, 1.25);
+  pushNulls(features, nulls, fMin, fMax, runIndex);
+  return features;
+}
+
+/** Corner room envelope — heavy bass boom, scooped lower mids, harsh reflected treble. */
+function buildCornerRoomEnvelope(frequency: number, runIndex: number): number {
+  const runTilt = (runIndex - 1) * 0.25;
+  let db = 0;
+  db += gaussianBump(frequency, 45, 0.5, 7.5 - runTilt * 0.15);
+  db += gaussianBump(frequency, 70, 0.35, 4.8);
+  db -= gaussianBump(frequency, 220, 0.55, 3.2);
+  db -= gaussianBump(frequency, 700, 0.6, 2.4);
+  db += gaussianBump(frequency, 2_400, 0.7, 2.8);
+  db += gaussianBump(frequency, 5_500, 0.55, 2.2 + runTilt * 0.1);
+  db -= gaussianBump(frequency, 11_000, 0.4, 1.8);
+  db -= gaussianBump(frequency, 17_000, 0.32, 3.2);
+  return db;
 }
 
 /** Mock 6 — dense comb across the band (incl. strengthened 130 Hz). */
@@ -424,6 +559,8 @@ function buildResonantMockFeatures(
   runIndex: number,
 ): MockFeature[] {
   switch (presetId) {
+    case 5:
+      return buildCornerChaosFeatures(fMin, fMax, runIndex);
     case 7:
       return build130MidSopranoFeatures(fMin, fMax, runIndex);
     case 8:
@@ -500,9 +637,12 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
     const ratio = index / (pointCount - 1);
     const frequency = options.fMin * Math.pow(usableMax / options.fMin, ratio);
 
-    let db = resonantPreset
-      ? buildResonantRoomEnvelope(frequency, options.runIndex)
-      : buildRoomEnvelope(frequency, options.runIndex);
+    let db =
+      resonantPreset === 5
+        ? buildCornerRoomEnvelope(frequency, options.runIndex)
+        : resonantPreset
+          ? buildResonantRoomEnvelope(frequency, options.runIndex)
+          : buildRoomEnvelope(frequency, options.runIndex);
 
     for (const feature of mockFeatures) {
       if (feature.frequency < options.fMin * 0.85 || feature.frequency > usableMax * 1.08) {
@@ -520,13 +660,21 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
       );
     }
 
-    const ripple = resonantPreset
-      ? Math.sin(Math.log2(frequency / 120) * 3.2 + options.runIndex) * 0.15
-      : Math.sin(Math.log2(frequency / 90) * 5.1 + options.runIndex) * 0.35 +
-        Math.sin(Math.log2(frequency / 220) * 2.7 + options.runIndex * 1.3) * 0.55;
+    const ripple =
+      resonantPreset === 5
+        ? Math.sin(Math.log2(frequency / 55) * 9.5 + options.runIndex) * 0.85 +
+          Math.sin(Math.log2(frequency / 140) * 6.2 + options.runIndex * 1.7) * 0.7 +
+          Math.sin(Math.log2(frequency / 900) * 4.4 + options.runIndex * 0.9) * 0.55 +
+          Math.sin(Math.log2(frequency / 3_500) * 7.1 + options.runIndex * 2.1) * 0.45
+        : resonantPreset
+          ? Math.sin(Math.log2(frequency / 120) * 3.2 + options.runIndex) * 0.15
+          : Math.sin(Math.log2(frequency / 90) * 5.1 + options.runIndex) * 0.35 +
+            Math.sin(Math.log2(frequency / 220) * 2.7 + options.runIndex * 1.3) * 0.55;
 
     db += ripple;
-    db += (rng() - 0.5) * (resonantPreset ? 0.28 : 0.45);
+    db +=
+      (rng() - 0.5) *
+      (resonantPreset === 5 ? 0.75 : resonantPreset ? 0.28 : 0.45);
 
     raw.push({
       frequency,
@@ -549,9 +697,13 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
     db: point.db - normalization,
   }));
 
-  const smoothFraction = resonantPreset
-    ? Math.max(12, options.smoothing)
-    : Math.max(6, options.smoothing);
+  // Keep Mock 5 intentionally jagged — minimal smoothing only.
+  const smoothFraction =
+    resonantPreset === 5
+      ? Math.max(48, options.smoothing)
+      : resonantPreset
+        ? Math.max(12, options.smoothing)
+        : Math.max(6, options.smoothing);
   const smoothed = smoothMockCurve(normalized, smoothFraction);
 
   return sanitizeCurve(smoothed);

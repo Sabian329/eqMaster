@@ -22,8 +22,9 @@ export const MEASUREMENT_COUNT_OPTIONS: { value: MeasurementCount; label: string
 /** Number of pre-generated mock presets available in Test tab. */
 export const MOCK_PRESET_COUNT = 9;
 
-/** Short labels for mock library buttons (presets 6–9 are resonance stress tests). */
+/** Short labels for mock library buttons (presets 5–9 are stress tests). */
 export const MOCK_PRESET_LABELS: Record<number, string> = {
+  5: 'Mock 5 · corner',
   6: 'Mock 6 · dense',
   7: 'Mock 7 · 130 Hz',
   8: 'Mock 8 · mid',
@@ -36,6 +37,8 @@ export function getMockPresetLabel(presetId: number): string {
 
 export function getMockPresetDescription(presetId: number): string | undefined {
   switch (presetId) {
+    case 5:
+      return 'Corner placement — dense modes, deep SBIR nulls, jagged comb';
     case 6:
       return 'Many narrow peaks 20 Hz–10 kHz';
     case 7:

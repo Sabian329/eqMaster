@@ -79,13 +79,11 @@ function retuneFilterGains(
 			for (const delta of GAIN_RETUNE_DELTAS_DB) {
 				const trial = current.map(cloneFilter);
 				const proposed = trial[index].gainDb + delta;
-				// Prefer weakening over deepening above 1 kHz.
-				if (
-					trial[index].frequency >= 1_000 &&
-					Math.abs(proposed) > Math.abs(trial[index].gainDb) &&
-					delta < 0 === trial[index].gainDb < 0
-				) {
-					continue;
+				// Above 1 kHz keep shallow tonal cuts inside the intended gain bands.
+				if (trial[index].frequency >= 1_000 && trial[index].gainDb < 0) {
+					const floor =
+						trial[index].frequency < 5_000 ? -2.5 : -3.0;
+					if (proposed < floor) continue;
 				}
 				trial[index].gainDb = clampFilterGain(
 					proposed,
@@ -112,6 +110,14 @@ function retuneFilterGains(
 	return current;
 }
 
+function highFrequencyBand(
+	frequency: number,
+): "mid" | "high" | "other" {
+	if (frequency >= 1_000 && frequency < 5_000) return "mid";
+	if (frequency >= 5_000) return "high";
+	return "other";
+}
+
 function tonalRegionAllowsCandidate(
 	candidate: GeneratedEqFilter,
 	existing: GeneratedEqFilter[],
@@ -120,12 +126,27 @@ function tonalRegionAllowsCandidate(
 ): boolean {
 	if (!isTonalOrShelf(candidate.reason)) return true;
 
+	const candidateBand = highFrequencyBand(candidate.frequency);
+	if (candidateBand !== "other") {
+		const sameBandCount = existing.filter(
+			(filter) =>
+				isTonalOrShelf(filter.reason) &&
+				highFrequencyBand(filter.frequency) === candidateBand,
+		).length;
+		// At most one mid-HF (≈1.5–3 kHz) and one high-HF (≥5 kHz) tonal/shelf.
+		if (sameBandCount >= 1) return false;
+	}
+
 	const overlappingTonal = existing.filter((filter) => {
 		if (!isTonalOrShelf(filter.reason)) return false;
 		const distance = Math.abs(
 			Math.log2(candidate.frequency / filter.frequency),
 		);
-		if (candidate.frequency >= 1_000 && filter.frequency >= 1_000 && distance < 0.75) {
+		if (
+			candidate.frequency >= 1_000 &&
+			filter.frequency >= 1_000 &&
+			distance < 0.75
+		) {
 			return true;
 		}
 		const correlation = responseCorrelation(
@@ -138,7 +159,6 @@ function tonalRegionAllowsCandidate(
 		return correlation > 0.85 && overlap > 0.5;
 	});
 
-	// At most one broad tonal/shelf filter per overlapping high-frequency region.
 	return overlappingTonal.length === 0;
 }
 

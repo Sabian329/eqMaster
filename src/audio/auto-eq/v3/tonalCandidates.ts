@@ -72,8 +72,13 @@ export function detectTonalCandidates(prepared: PreparedMeasurement): TonalCandi
     const centerIndex = Math.floor((start + end - 1) / 2);
     const centerFrequency = broad[centerIndex].frequency;
 
+    const minWidth =
+      centerFrequency >= 1_000
+        ? Math.max(MIN_TONAL_WIDTH_OCTAVES, 0.75)
+        : MIN_TONAL_WIDTH_OCTAVES;
+
     if (
-      bandwidthOctaves >= MIN_TONAL_WIDTH_OCTAVES &&
+      bandwidthOctaves >= minWidth &&
       Math.abs(averageError) >= MIN_TONAL_ERROR_DB &&
       averageRel >= MIN_RELIABILITY &&
       !regionHasBlockingLocalResonances(
@@ -86,7 +91,7 @@ export function detectTonalCandidates(prepared: PreparedMeasurement): TonalCandi
       const reason: FilterReason =
         centerFrequency < 250
           ? 'low-frequency-tilt'
-          : centerFrequency > 6_000
+          : centerFrequency > 5_000
             ? 'high-frequency-tilt'
             : 'broad-tonal-error';
 

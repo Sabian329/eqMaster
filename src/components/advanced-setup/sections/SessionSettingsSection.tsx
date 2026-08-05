@@ -194,8 +194,9 @@ export function TestLoadedPanel({ state }: TestLoadedPanelProps) {
 				Test measurement loaded
 			</Text>
 			<Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.6" mb={3}>
-				Pick one of {MOCK_PRESET_COUNT} synthetic room responses. Mocks 6–9 are
-				resonance stress tests (130 Hz, mid, soprano)
+				Pick one of {MOCK_PRESET_COUNT} synthetic room responses. Mock 5 is a
+				brutal corner-placement comb; mocks 6–9 are resonance stress tests
+				(130 Hz, mid, soprano)
 				{measurementCount > 1
 					? ` — ${measurementCount} runs averaged per mock.`
 					: "."}{" "}

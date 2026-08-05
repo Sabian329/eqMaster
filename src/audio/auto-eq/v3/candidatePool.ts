@@ -1,6 +1,9 @@
 import {
 	FREQUENCY_OFFSETS_OCTAVES,
 	GAIN_MULTIPLIERS,
+	HF_TONAL_Q_VALUES,
+	HIGH_HF_TONAL_GAIN_DB,
+	MID_HF_TONAL_GAIN_DB,
 	MIN_PROMINENCE_DB,
 	Q_MULTIPLIERS,
 	TONAL_Q_VALUES,
@@ -8,9 +11,11 @@ import {
 } from "./constants";
 import { getCorrectionStrength } from "./correctionStrength";
 import { clampFilterGain, clampFilterQ } from "./frequencyLimits";
+import { clamp } from "./math";
 import { applyTolerance, getTargetToleranceDb } from "./tolerance";
 import {
 	canBoostAtFrequency,
+	clampFilterFrequency,
 	clampFrequencyToOptions,
 } from "./prepareMeasurement";
 import type {
@@ -127,6 +132,15 @@ export function generateResonancePool(
 	for (const resonance of resonances) {
 		if (resonance.isPotentialNull) continue;
 
+		// Above 1 kHz prefer broad tonal/shelf correction, not narrow resonance notches.
+		if (
+			resonance.frequency >= 1_000 &&
+			resonance.reason !== "repeated-resonance" &&
+			!resonance.isHighConfidenceRepeated
+		) {
+			continue;
+		}
+
 		const measuredDb = findNearestDb(prepared.detailed, resonance.frequency);
 		const targetDb = findNearestDb(prepared.target, resonance.frequency);
 		const rawError = measuredDb - targetDb;
@@ -176,6 +190,34 @@ export function generateResonancePool(
 	return limitPool(candidates, V3_CANDIDATE_BUDGET.resonance);
 }
 
+function shapeHighFrequencyTonalGain(
+	frequency: number,
+	rawGainDb: number,
+	toleratedErrorDb: number,
+): number {
+	if (rawGainDb >= 0 || toleratedErrorDb < 1.25) return rawGainDb;
+
+	// Mid HF: one shallow wide cut around 1.5–3 kHz band.
+	if (frequency >= 1_000 && frequency < 5_000) {
+		return clamp(
+			Math.min(rawGainDb, MID_HF_TONAL_GAIN_DB.max),
+			MID_HF_TONAL_GAIN_DB.min,
+			MID_HF_TONAL_GAIN_DB.max,
+		);
+	}
+
+	// High HF: shallow wide cut / shelf in the -2…-3 dB band.
+	if (frequency >= 5_000) {
+		return clamp(
+			Math.min(rawGainDb, HIGH_HF_TONAL_GAIN_DB.max),
+			HIGH_HF_TONAL_GAIN_DB.min,
+			HIGH_HF_TONAL_GAIN_DB.max,
+		);
+	}
+
+	return rawGainDb;
+}
+
 export function generateTonalPool(
 	tonalSegments: TonalCandidate[],
 	prepared: PreparedMeasurement,
@@ -198,30 +240,47 @@ export function generateTonalPool(
 		);
 		if (Math.abs(toleratedError) < MIN_PROMINENCE_DB) continue;
 
-		const strength = getCorrectionStrength(
+		// Prefer mid-HF center in the 1.5–3 kHz trend band.
+		let candidateFrequency = clampFrequencyToOptions(
 			segment.frequency,
+			options,
+		);
+		if (
+			segment.errorDb > 0 &&
+			candidateFrequency >= 1_000 &&
+			candidateFrequency < 5_000
+		) {
+			candidateFrequency = clamp(candidateFrequency, 1_500, 3_000);
+		}
+
+		const strength = getCorrectionStrength(
+			candidateFrequency,
 			prepared.measurementCount,
 			segment.reliability,
 		);
-		const baseGain = clampFilterGain(
+		const shapedGain = shapeHighFrequencyTonalGain(
+			candidateFrequency,
 			-toleratedError * strength,
-			segment.frequency,
+			Math.abs(toleratedError),
+		);
+		const baseGain = clampFilterGain(
+			shapedGain,
+			candidateFrequency,
 			"PK",
 			limitOptions,
 		);
 
-		for (const q of TONAL_Q_VALUES) {
+		const qValues =
+			candidateFrequency >= 1_000 ? HF_TONAL_Q_VALUES : TONAL_Q_VALUES;
+
+		for (const q of qValues) {
 			const clampedQ = clampFilterQ(
 				q,
-				segment.frequency,
+				candidateFrequency,
 				baseGain,
 				"PK",
 				false,
 				limitOptions,
-			);
-			const candidateFrequency = clampFrequencyToOptions(
-				segment.frequency,
-				options,
 			);
 
 			if (
@@ -274,8 +333,16 @@ export function generateShelfPool(
 			prepared.measurementCount,
 			shelf.reliability,
 		);
+		const shapedGain =
+			shelf.type === "HS"
+				? shapeHighFrequencyTonalGain(
+						shelf.frequency,
+						-toleratedError * strength,
+						Math.abs(toleratedError),
+					)
+				: -toleratedError * strength;
 		const gainDb = clampFilterGain(
-			-toleratedError * strength,
+			shapedGain,
 			shelf.frequency,
 			shelf.type,
 			limitOptions,
@@ -292,7 +359,12 @@ export function generateShelfPool(
 
 		candidates.push({
 			type: shelf.type,
-			frequency: clampFrequencyToOptions(shelf.frequency, options),
+			frequency: clampFilterFrequency(
+				shelf.frequency,
+				shelf.type,
+				shelf.reason,
+				options,
+			),
 			gainDb,
 			q: 0.707,
 			reason: shelf.reason,
@@ -362,6 +434,35 @@ export function candidateToFilter(
 
 export function cloneFilter(filter: GeneratedEqFilter): GeneratedEqFilter {
 	return { ...filter, affectedRange: { ...filter.affectedRange } };
+}
+
+/** Keep shallow HF tonal / shelf cuts inside the intended gain bands. */
+export function clampHighFrequencyTonalGain(
+	filter: GeneratedEqFilter,
+): GeneratedEqFilter {
+	const clone = cloneFilter(filter);
+	const isHfTonal =
+		clone.reason === "broad-tonal-error" ||
+		clone.reason === "high-frequency-tilt" ||
+		clone.type === "HS";
+
+	if (!isHfTonal || clone.gainDb >= 0) return clone;
+
+	if (clone.frequency >= 1_000 && clone.frequency < 5_000) {
+		clone.gainDb = clamp(
+			clone.gainDb,
+			MID_HF_TONAL_GAIN_DB.min,
+			MID_HF_TONAL_GAIN_DB.max,
+		);
+	} else if (clone.frequency >= 5_000 || clone.type === "HS") {
+		clone.gainDb = clamp(
+			clone.gainDb,
+			HIGH_HF_TONAL_GAIN_DB.min,
+			HIGH_HF_TONAL_GAIN_DB.max,
+		);
+	}
+
+	return clone;
 }
 
 export function buildCandidatePools(

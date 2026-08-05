@@ -1,5 +1,9 @@
 import { DEFAULT_V3_OPTIONS, REGENERATION_CYCLES } from "./constants";
-import { buildCandidatePools, resetCandidateCounter } from "./candidatePool";
+import {
+	buildCandidatePools,
+	clampHighFrequencyTonalGain,
+	resetCandidateCounter,
+} from "./candidatePool";
 import {
 	computeCombinedFilterResponse,
 	computePredictedCurve,
@@ -20,6 +24,7 @@ import {
 	computeOvercutAreaDbOct,
 } from "./overcut";
 import {
+	clampFilterFrequency,
 	prepareMeasurement,
 	refreshPreparedResidual,
 } from "./prepareMeasurement";
@@ -260,7 +265,16 @@ export function generateAutoEqV3(
 		alignedMeasurements,
 		options,
 	);
-	filters = safetyResult.filters;
+	filters = safetyResult.filters.map((filter) => {
+		const clone = clampHighFrequencyTonalGain(filter);
+		clone.frequency = clampFilterFrequency(
+			clone.frequency,
+			clone.type,
+			clone.reason,
+			options,
+		);
+		return clone;
+	});
 	weakenedFilterCount += safetyResult.weakenedFilterCount;
 	const filtersAfterSafetyPass = filters.length;
 

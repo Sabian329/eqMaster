@@ -14,7 +14,7 @@ export function getCorrectionStrength(
 	} else if (frequency < 10_000) {
 		strength = 0.5;
 	} else {
-		strength = 0.35;
+		strength = 0.4;
 	}
 
 	if (measurementCount === 1 && frequency >= 1_000) {

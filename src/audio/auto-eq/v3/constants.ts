@@ -72,6 +72,10 @@ export const FREQUENCY_OFFSETS_OCTAVES = [-1 / 24, -1 / 48, 0, 1 / 48, 1 / 24] a
 export const Q_MULTIPLIERS = [0.7, 0.85, 1, 1.2, 1.45] as const;
 export const GAIN_MULTIPLIERS = [0.6, 0.75, 0.9, 1] as const;
 export const TONAL_Q_VALUES = [0.5, 0.707, 1, 1.4, 2] as const;
+/** Wide Q only — HF tonal correction should follow the broad trend, not notches. */
+export const HF_TONAL_Q_VALUES = [0.5, 0.707] as const;
+export const MID_HF_TONAL_GAIN_DB = { min: -2.5, max: -1.5 } as const;
+export const HIGH_HF_TONAL_GAIN_DB = { min: -3.0, max: -2.0 } as const;
 
 export const OPTIMIZATION_STAGES = {
   frequencyStepsOctaves: [1 / 12, 1 / 24, 1 / 48, 1 / 96] as const,

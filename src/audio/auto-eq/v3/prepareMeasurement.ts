@@ -288,3 +288,27 @@ export function clampFrequencyToOptions(
 ): number {
 	return clamp(frequency, options.minFrequency, options.maxFrequency);
 }
+
+/** Keep shelf / HF tonal filters inside their intended bands during optimization. */
+export function clampFilterFrequency(
+	frequency: number,
+	filterType: GeneratedEqFilter["type"],
+	reason: GeneratedEqFilter["reason"],
+	options: AutoEqV3Options,
+): number {
+	let minHz = options.minFrequency;
+	let maxHz = options.maxFrequency;
+
+	if (filterType === "HS" || reason === "high-frequency-tilt") {
+		minHz = Math.max(minHz, 5_500);
+		maxHz = Math.min(maxHz, 12_000);
+	} else if (filterType === "LS" || reason === "low-frequency-tilt") {
+		minHz = Math.max(minHz, 40);
+		maxHz = Math.min(maxHz, 250);
+	} else if (reason === "broad-tonal-error" && frequency >= 1_000) {
+		minHz = Math.max(minHz, 1_500);
+		maxHz = Math.min(maxHz, 3_500);
+	}
+
+	return clamp(frequency, minHz, maxHz);
+}

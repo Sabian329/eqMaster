@@ -8,6 +8,7 @@ import { cloneFilter } from "./candidatePool";
 import { calculateTotalCost } from "./costFunction";
 import { getCorrectionStrength } from "./correctionStrength";
 import { clampFilterGain, clampFilterQ } from "./frequencyLimits";
+import { clampFilterFrequency } from "./prepareMeasurement";
 import { SeededRandom } from "./math";
 import type {
 	AutoEqV3Options,
@@ -75,16 +76,22 @@ function coordinateDescentPass(
 
 		for (const frequency of frequencyVariants) {
 			const trial = current.map(cloneFilter);
-			trial[index].frequency = frequency;
+			const clampedFrequency = clampFilterFrequency(
+				frequency,
+				trial[index].type,
+				trial[index].reason,
+				options,
+			);
+			trial[index].frequency = clampedFrequency;
 			trial[index].gainDb = clampFilterGain(
 				trial[index].gainDb,
-				frequency,
+				clampedFrequency,
 				trial[index].type,
 				limitOptions,
 			);
 			trial[index].q = clampFilterQ(
 				trial[index].q,
-				frequency,
+				clampedFrequency,
 				trial[index].gainDb,
 				trial[index].type,
 				false,

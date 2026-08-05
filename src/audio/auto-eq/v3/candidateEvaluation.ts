@@ -56,15 +56,20 @@ function acceptanceLimits(frequency: number, reason?: string): {
 			allowedOvercutIncrease: resonance ? 0.35 : 0.12,
 		};
 	}
+	const tonal =
+		reason === "broad-tonal-error" ||
+		reason === "high-frequency-tilt" ||
+		reason === "low-frequency-tilt";
+
 	if (frequency < 5_000) {
 		return {
-			maximumAllowedOffBandDamage: 0.12,
-			allowedOvercutIncrease: 0.04,
+			maximumAllowedOffBandDamage: tonal ? 0.25 : 0.12,
+			allowedOvercutIncrease: tonal ? 0.12 : 0.04,
 		};
 	}
 	return {
-		maximumAllowedOffBandDamage: MAX_ALLOWED_OFF_BAND_DAMAGE,
-		allowedOvercutIncrease: ALLOWED_OVERCUT_INCREASE,
+		maximumAllowedOffBandDamage: tonal ? 0.2 : MAX_ALLOWED_OFF_BAND_DAMAGE,
+		allowedOvercutIncrease: tonal ? 0.1 : ALLOWED_OVERCUT_INCREASE,
 	};
 }
 

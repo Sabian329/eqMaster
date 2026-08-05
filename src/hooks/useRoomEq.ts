@@ -804,11 +804,22 @@ export function useRoomEq() {
 
 	const correctedCurve = useMemo(() => {
 		if (!curve.length) return [];
-		// V3 predicted response must not include preamp (headroom only).
-		const preampForPrediction =
-			eqAlgorithmVersion === "v3" ? 0 : presetPreamp;
-		return buildCorrectedCurve(curve, suggestions, preampForPrediction);
-	}, [curve, suggestions, presetPreamp, eqAlgorithmVersion]);
+		// V3 predicted = measured + RBJ filter response (no preamp, no display clamp).
+		if (eqAlgorithmVersion === "v3") {
+			return buildCorrectedCurve(curve, suggestions, 0, {
+				responseModel: "rbj",
+				sampleRate: measurementMeta?.sampleRate ?? 48_000,
+				clampDisplay: false,
+			});
+		}
+		return buildCorrectedCurve(curve, suggestions, presetPreamp);
+	}, [
+		curve,
+		suggestions,
+		presetPreamp,
+		eqAlgorithmVersion,
+		measurementMeta?.sampleRate,
+	]);
 
 	const eqApplyProfile = useMemo(
 		() => ({ suggestions, preampDb: presetPreamp }),

@@ -70,7 +70,7 @@ export function getFrequencyLimits(
 
 	if (frequency < 10_000) {
 		return {
-			maxCutDb: extendedHf ? -4 : -2.5,
+			maxCutDb: extendedHf ? -4 : -3,
 			maxBoostDb: 1,
 			minQ: 0.5,
 			maxCutQ: extendedHf ? 2.5 : 2.5,
@@ -80,7 +80,7 @@ export function getFrequencyLimits(
 	}
 
 	return {
-		maxCutDb: extendedHf ? -2.5 : -1.5,
+		maxCutDb: extendedHf ? -2.5 : -2.5,
 		maxBoostDb: 0.5,
 		minQ: 0.5,
 		maxCutQ: extendedHf ? 1.8 : 1.8,
