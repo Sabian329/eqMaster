@@ -145,6 +145,7 @@ export function drawChart(
       if (id.startsWith('run-')) return 2;
       if (id === 'average') return 3;
       if (id === 'corrected') return 5;
+      if (id === 'verified') return 6;
       return 3;
     };
     return layer(a.id) - layer(b.id);

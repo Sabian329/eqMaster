@@ -6,6 +6,7 @@ import {
   enumerateAudioDevices,
   requestMicrophonePermission,
 } from '../audio/devices';
+import { getActiveEqFilters, hasEqToApply } from '../audio/eqChain';
 import { runMeasurement, startLevelTest } from '../audio/measurement';
 import type {
   ChannelMode,
@@ -40,7 +41,7 @@ import {
   isBandTooClose,
   mergeSuggestions,
 } from '../utils/customBands';
-import { runMockMeasurement, createMockMeasurementRun } from '../utils/mockMeasurement';
+import { runMockMeasurement, runMockVerification, createMockMeasurementRun } from '../utils/mockMeasurement';
 import {
   MEASUREMENT_PRESETS,
   type MeasurementPresetId,
@@ -214,6 +215,13 @@ export function useRoomEq() {
     Record<string, boolean>
   >({});
   const [customSuggestions, setCustomSuggestions] = useState<Suggestion[]>([]);
+  const [removedSuggestionKeys, setRemovedSuggestionKeys] = useState<
+    Record<string, true>
+  >({});
+  const [verificationCurve, setVerificationCurve] = useState<CurvePoint[] | null>(null);
+  const [verificationMeta, setVerificationMeta] = useState<MeasurementMeta | null>(null);
+  const [verificationRunning, setVerificationRunning] = useState(false);
+  const [chartSeriesHidden, setChartSeriesHidden] = useState<Record<string, boolean>>({});
 
   const refreshDevices = useCallback(
     async (permissionJustGranted = false) => {
@@ -336,11 +344,20 @@ export function useRoomEq() {
     setSuggestionQOverrides({});
     setSuggestionGainOverrides({});
     setSuggestionEnabledOverrides({});
+    setRemovedSuggestionKeys({});
   }, [suggestionSignature]);
 
+  const activeComputedSuggestions = useMemo(
+    () =>
+      computedSuggestions.filter(
+        (item) => !removedSuggestionKeys[suggestionKey(item)],
+      ),
+    [computedSuggestions, removedSuggestionKeys],
+  );
+
   const mergedSuggestions = useMemo(
-    () => mergeSuggestions(computedSuggestions, customSuggestions),
-    [computedSuggestions, customSuggestions],
+    () => mergeSuggestions(activeComputedSuggestions, customSuggestions),
+    [activeComputedSuggestions, customSuggestions],
   );
 
   const suggestions = useMemo(
@@ -454,10 +471,7 @@ export function useRoomEq() {
     [curve, mergedSuggestions, targetCurve],
   );
 
-  const removeCustomBand = useCallback((key: string) => {
-    setCustomSuggestions((previous) =>
-      previous.filter((item) => suggestionKey(item) !== key),
-    );
+  const clearSuggestionOverrides = useCallback((key: string) => {
     setSuggestionQOverrides((previous) => {
       const next = { ...previous };
       delete next[key];
@@ -475,6 +489,20 @@ export function useRoomEq() {
     });
   }, []);
 
+  const removeBand = useCallback(
+    (key: string) => {
+      if (key.startsWith('custom:')) {
+        setCustomSuggestions((previous) =>
+          previous.filter((item) => suggestionKey(item) !== key),
+        );
+      } else {
+        setRemovedSuggestionKeys((previous) => ({ ...previous, [key]: true }));
+      }
+      clearSuggestionOverrides(key);
+    },
+    [clearSuggestionOverrides],
+  );
+
   const resetSuggestionQ = useCallback(() => {
     setSuggestionQOverrides({});
     setSuggestionGainOverrides({});
@@ -485,6 +513,30 @@ export function useRoomEq() {
     if (!curve.length) return [];
     return buildCorrectedCurve(curve, suggestions, presetPreamp);
   }, [curve, suggestions, presetPreamp]);
+
+  const eqApplyProfile = useMemo(
+    () => ({ suggestions, preampDb: presetPreamp }),
+    [suggestions, presetPreamp],
+  );
+
+  const canApplyVerificationEq = useMemo(
+    () => hasEqToApply(eqApplyProfile),
+    [eqApplyProfile],
+  );
+
+  const verifyEnabled =
+    curve.length > 0 &&
+    canApplyVerificationEq &&
+    !running &&
+    !verificationRunning &&
+    !sessionOpen &&
+    !meterActive &&
+    (isTestMode || (env.ready && safetyCheck));
+
+  const clearVerification = useCallback(() => {
+    setVerificationCurve(null);
+    setVerificationMeta(null);
+  }, []);
 
   const chartSeries = useMemo(() => {
     const base = buildChartSeries(measurementRuns, averagedRun);
@@ -505,10 +557,21 @@ export function useRoomEq() {
     if (correctedCurve.length) {
       overlays.push({
         id: 'corrected',
-        label: 'After EQ',
+        label: 'After EQ (predicted)',
         curve: correctedCurve,
         color: '#ff9f6b',
         lineWidth: 2.4,
+        alpha: 1,
+      });
+    }
+
+    if (verificationCurve?.length) {
+      overlays.push({
+        id: 'verified',
+        label: 'Verified (measured with EQ)',
+        curve: verificationCurve,
+        color: '#55d68b',
+        lineWidth: 2.6,
         alpha: 1,
       });
     }
@@ -519,16 +582,39 @@ export function useRoomEq() {
     averagedRun,
     targetCurve,
     correctedCurve,
+    verificationCurve,
     activeToneProfile.label,
   ]);
+
+  const isChartSeriesVisible = useCallback(
+    (id: string) => chartSeriesHidden[id] !== true,
+    [chartSeriesHidden],
+  );
+
+  const toggleChartSeriesVisibility = useCallback((id: string) => {
+    setChartSeriesHidden((previous) => ({
+      ...previous,
+      [id]: previous[id] !== true,
+    }));
+  }, []);
+
+  const visibleChartSeries = useMemo(
+    () => chartSeries.filter((series) => chartSeriesHidden[series.id] !== true),
+    [chartSeries, chartSeriesHidden],
+  );
+
+  const showFilterOverlays = chartSeriesHidden.corrected !== true;
 
   const eqSummary = useMemo(() => {
     if (!curve.length) return '';
     if (!suggestions.length) {
+      if (Object.keys(removedSuggestionKeys).length > 0) {
+        return 'No EQ bands — click the chart to add a band.';
+      }
       return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
     }
-    const autoCount = computedSuggestions.length;
-    const customCount = customSuggestions.length;
+    const autoCount = suggestions.filter((item) => item.source !== 'custom').length;
+    const customCount = suggestions.filter((item) => item.source === 'custom').length;
     const total = suggestions.length;
     if (!total) {
       return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
@@ -542,8 +628,8 @@ export function useRoomEq() {
   }, [
     curve.length,
     suggestions.length,
-    computedSuggestions.length,
-    customSuggestions.length,
+    suggestions,
+    removedSuggestionKeys,
     eqStrategyId,
     activeToneProfile.label,
     eqBandCount,
@@ -617,6 +703,8 @@ export function useRoomEq() {
     setAveragedRun(runs.length > 1 ? average : null);
     setCurve(averagedCurve);
     setCustomSuggestions([]);
+    setRemovedSuggestionKeys({});
+    clearVerification();
     setMeasurementMeta(baseMeta);
     setPresetStatus('');
     setStatus(
@@ -629,7 +717,7 @@ export function useRoomEq() {
           : 'Measurement complete',
       100,
     );
-  }, [setStatus]);
+  }, [setStatus, clearVerification]);
 
   const loadMockDemoResults = useCallback(() => {
     const { inputLabel, outputLabel } = getDeviceLabels();
@@ -772,6 +860,7 @@ export function useRoomEq() {
     if (running || sessionOpen) return;
     await handleStopMeter();
     await stopSessionMeter();
+    clearVerification();
 
     setSessionOpen(true);
     setSessionStep(isTestMode ? 'ready' : 'mic-test');
@@ -884,6 +973,92 @@ export function useRoomEq() {
     setSessionRuns([]);
     setStatus('Ready', 0);
   };
+
+  const activeFilterCount = useMemo(
+    () => getActiveEqFilters(suggestions).length,
+    [suggestions],
+  );
+
+  const runVerificationMeasurement = useCallback(async () => {
+    if (!curve.length || !canApplyVerificationEq || verificationRunning) return;
+
+    await handleStopMeter();
+    setVerificationRunning(true);
+    setStatus('Starting verification measurement…', 5);
+
+    try {
+      const { inputLabel, outputLabel } = getDeviceLabels();
+      const eqApply = eqApplyProfile;
+
+      if (isTestMode) {
+        const result = await runMockVerification(
+          {
+            fMin: fStart,
+            fMax: fEnd,
+            smoothing,
+            durationSeconds: duration,
+            levelDb: level,
+            channel,
+            runIndex: 1,
+            inputLabel,
+            outputLabel,
+            baselineCurve: curve,
+            suggestions,
+            preampDb: presetPreamp,
+          },
+          setStatus,
+        );
+        setVerificationCurve(result.curve);
+        setVerificationMeta(result.measurementMeta);
+      } else {
+        const result = await runMeasurement({
+          inputDeviceId,
+          outputDeviceId,
+          channel,
+          fMin: fStart,
+          fMax: fEnd,
+          durationSeconds: duration,
+          smoothing,
+          levelDb: level,
+          calibration,
+          inputLabel,
+          outputLabel,
+          onStatus: setStatus,
+          eqApply,
+        });
+        setVerificationCurve(result.curve);
+        setVerificationMeta(result.measurementMeta);
+      }
+
+      setStatus('Verification complete — compare green Verified vs orange predicted', 100);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message, 0);
+      alert(message);
+    } finally {
+      setVerificationRunning(false);
+    }
+  }, [
+    curve,
+    canApplyVerificationEq,
+    verificationRunning,
+    getDeviceLabels,
+    eqApplyProfile,
+    isTestMode,
+    fStart,
+    fEnd,
+    smoothing,
+    duration,
+    level,
+    channel,
+    suggestions,
+    presetPreamp,
+    inputDeviceId,
+    outputDeviceId,
+    calibration,
+    setStatus,
+    handleStopMeter,
+  ]);
 
   const exportCsv = () => {
     if (!curve.length) return;
@@ -1002,7 +1177,7 @@ export function useRoomEq() {
     setSuggestionGain,
     toggleSuggestionEnabled,
     addCustomBand,
-    removeCustomBand,
+    removeBand,
     setAllSuggestionQ,
     scaleAllSuggestionQ,
     resetSuggestionQ,
@@ -1023,6 +1198,18 @@ export function useRoomEq() {
     measurementRuns,
     averagedRun,
     chartSeries,
+    visibleChartSeries,
+    isChartSeriesVisible,
+    toggleChartSeriesVisibility,
+    showFilterOverlays,
+    verificationCurve,
+    verificationMeta,
+    verificationRunning,
+    canApplyVerificationEq,
+    verifyEnabled,
+    activeFilterCount,
+    runVerificationMeasurement,
+    clearVerification,
     sessionOpen,
     sessionStep,
     sessionTargetCount,

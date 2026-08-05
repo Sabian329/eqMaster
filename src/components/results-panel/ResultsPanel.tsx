@@ -56,7 +56,8 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
 
         <Text fontSize="xs" color="gray.500" lineHeight="1.65" mt={4}>
           Suggestions are a starting point, not automatic calibration. Adjust gain and Q under
-          the chart and watch the orange After EQ line update live.
+          the chart — orange After EQ updates live; use Verify correction for a real re-measurement
+          with EQ on the sweep.
         </Text>
       </Card.Body>
     </Card.Root>

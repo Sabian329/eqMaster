@@ -8,14 +8,13 @@ export function EqBandBoard({
   setSuggestionQ,
   setSuggestionGain,
   toggleSuggestionEnabled,
-  removeCustomBand,
+  removeBand,
   embedded = false,
 }: EqBandBoardProps) {
   if (!suggestions.length) {
     return (
       <Box p={6} color="gray.500" fontSize="sm" lineHeight="1.65">
-        No auto-detected filters for this measurement. Click anywhere on the frequency chart
-        above to add a custom band at that frequency.
+        No EQ bands. Click anywhere on the frequency chart above to add a band.
       </Box>
     );
   }
@@ -44,7 +43,7 @@ export function EqBandBoard({
             setSuggestionQ={setSuggestionQ}
             setSuggestionGain={setSuggestionGain}
             toggleSuggestionEnabled={toggleSuggestionEnabled}
-            removeCustomBand={removeCustomBand}
+            removeBand={removeBand}
             compact={embedded}
           />
         ))}

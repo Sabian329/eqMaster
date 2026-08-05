@@ -1,6 +1,7 @@
 import type { AnalysisResult, ChannelMode, MeasurementMeta, RecorderChunk } from '../types';
 import AnalysisWorker from '../workers/analysis.worker?worker';
 import workletUrl from '../worklets/pcm-recorder-processor.ts?url';
+import { connectEqChain, renderSweepWithEq, type EqApplyProfile } from './eqChain';
 import {
   createAudioConstraints,
   createAudioContext,
@@ -118,6 +119,7 @@ export interface RunMeasurementParams {
   inputLabel: string;
   outputLabel: string;
   onStatus: (text: string, progress: number) => void;
+  eqApply?: EqApplyProfile;
 }
 
 export interface RunMeasurementResult {
@@ -141,6 +143,7 @@ export async function runMeasurement(
     inputLabel,
     outputLabel,
     onStatus,
+    eqApply,
   } = params;
   let fMax = params.fMax;
 
@@ -283,7 +286,11 @@ export async function runMeasurement(
 
     playback = context.createBufferSource();
     playback.buffer = makeSweepBuffer(context, sweepData, channel);
-    playback.connect(context.destination);
+    if (eqApply) {
+      connectEqChain(context, playback, context.destination, eqApply);
+    } else {
+      playback.connect(context.destination);
+    }
     playback.start(startTime);
 
     const totalSeconds = preRollSeconds + durationSeconds + tailSeconds;
@@ -298,7 +305,12 @@ export async function runMeasurement(
         if (elapsed < preRollSeconds) {
           onStatus('Room quiet — measuring background noise…', progress);
         } else if (elapsed < preRollSeconds + durationSeconds) {
-          onStatus('Sweep in progress — keep the microphone still…', progress);
+          onStatus(
+            eqApply
+              ? 'Sweep with EQ in progress — keep the microphone still…'
+              : 'Sweep in progress — keep the microphone still…',
+            progress,
+          );
         } else {
           onStatus('Recording room decay…', progress);
         }
@@ -334,9 +346,13 @@ export async function runMeasurement(
 
     onStatus('Analyzing data…', 72);
 
+    const analysisSweep = eqApply
+      ? await renderSweepWithEq(context.sampleRate, sweepData, channel, eqApply)
+      : sweepData;
+
     const result = await analyzeInWorker({
       recorded: assembled.data,
-      sweep: sweepData,
+      sweep: analysisSweep,
       sampleRate: context.sampleRate,
       sweepOffset,
       fMin,
@@ -364,6 +380,7 @@ export async function runMeasurement(
       fftSize: result.fftSize,
       calibrationPoints: calibration.length,
       recorderMode,
+      verificationMode: Boolean(eqApply),
     };
 
     return {

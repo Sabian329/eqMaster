@@ -14,7 +14,7 @@ export function EqBandStrip({
   setSuggestionQ,
   setSuggestionGain,
   toggleSuggestionEnabled,
-  removeCustomBand,
+  removeBand,
   compact = false,
 }: EqBandStripProps) {
   const rowKey = suggestionKey(item);
@@ -45,22 +45,23 @@ export function EqBandStrip({
             <Checkbox.HiddenInput />
             <Checkbox.Control borderColor="whiteAlpha.400" />
           </Checkbox.Root>
-          {isCustom && removeCustomBand ? (
-            <IconButton
-              aria-label="Remove custom band"
-              size="2xs"
-              variant="ghost"
-              color="gray.400"
-              minW="18px"
-              h="18px"
-              _hover={{ color: 'red.300', bg: 'whiteAlpha.100' }}
-              onClick={() => removeCustomBand(rowKey)}
-            >
-              ×
-            </IconButton>
-          ) : (
-            <Box w="12px" h="12px" borderRadius="sm" bg={color} title="Band color" />
-          )}
+          <HStack gap={1} align="center">
+            <Box w="12px" h="12px" borderRadius="sm" bg={color} title="Band color" flexShrink={0} />
+            {removeBand ? (
+              <IconButton
+                aria-label="Remove band"
+                size="2xs"
+                variant="ghost"
+                color="gray.400"
+                minW="18px"
+                h="18px"
+                _hover={{ color: 'red.300', bg: 'whiteAlpha.100' }}
+                onClick={() => removeBand(rowKey)}
+              >
+                ×
+              </IconButton>
+            ) : null}
+          </HStack>
         </HStack>
 
         <BandSpeakerIcons color={color} opacity={enabled ? 0.92 : 0.35} />

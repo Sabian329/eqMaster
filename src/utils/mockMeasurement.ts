@@ -1,4 +1,5 @@
 import type { ChannelMode, CurvePoint, MeasurementMeta, Suggestion } from '../types';
+import { buildCorrectedCurve } from './correctedCurve';
 import { sanitizeCurve } from './sanitizeCurve';
 
 export interface MockMeasurementOptions {
@@ -174,4 +175,51 @@ export async function runMockMeasurement(
     suggestions: [],
     measurementMeta,
   };
+}
+
+export interface MockVerificationOptions extends MockMeasurementOptions {
+  baselineCurve: CurvePoint[];
+  suggestions: Suggestion[];
+  preampDb: number;
+}
+
+export async function runMockVerification(
+  options: MockVerificationOptions,
+  onStatus: (text: string, progress: number) => void,
+): Promise<{
+  curve: CurvePoint[];
+  measurementMeta: MeasurementMeta;
+}> {
+  onStatus('Mock verification — applying EQ (simulated)…', 12);
+  await delay(300);
+  onStatus('Mock verification — re-measuring with EQ…', 45);
+  await delay(450);
+  onStatus('Mock verification — analyzing…', 78);
+  await delay(350);
+
+  const corrected = buildCorrectedCurve(
+    options.baselineCurve,
+    options.suggestions,
+    options.preampDb,
+  );
+
+  const runShift = (options.runIndex - 1) * 0.15;
+  const curve = sanitizeCurve(
+    corrected.map((point) => ({
+      frequency: point.frequency,
+      db: Math.max(-54, Math.min(18, point.db + (Math.random() - 0.5) * runShift)),
+    })),
+  );
+
+  const { measurementMeta: baseMeta } = createMockMeasurementRun(options);
+  const measurementMeta: MeasurementMeta = {
+    ...baseMeta,
+    date: new Date().toISOString(),
+    peakDb: baseMeta.peakDb - 1.2,
+    verificationMode: true,
+  };
+
+  onStatus('Mock verification complete', 100);
+
+  return { curve, measurementMeta };
 }

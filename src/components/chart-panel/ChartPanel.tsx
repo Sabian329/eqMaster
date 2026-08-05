@@ -4,11 +4,19 @@ import { ChartEqEditor } from './chart-eq-editor';
 import { resolveChartFrequencyRange, resolveDisplayMeta } from './constants';
 import { ChartHeader } from './ChartHeader';
 import { ChartStatsGrid } from './ChartStatsGrid';
+import { VerificationPanel } from './VerificationPanel';
 import { FrequencyChart } from './frequency-chart';
 import type { ChartPanelProps } from './types';
 
 export function ChartPanel({ state }: ChartPanelProps) {
-  const { chartSeries } = state;
+  const {
+    chartSeries,
+    visibleChartSeries,
+    isChartSeriesVisible,
+    toggleChartSeriesVisibility,
+    showFilterOverlays,
+    filterOverlays,
+  } = state;
   const displayMeta = resolveDisplayMeta(state);
   const { fMin, fMax } = resolveChartFrequencyRange(
     chartSeries,
@@ -18,7 +26,11 @@ export function ChartPanel({ state }: ChartPanelProps) {
   return (
     <Card.Root w="full" {...panelStyles.root} id="frequency-chart-panel">
       <Card.Header {...panelStyles.header}>
-        <ChartHeader chartSeries={chartSeries} />
+        <ChartHeader
+          chartSeries={chartSeries}
+          isChartSeriesVisible={isChartSeriesVisible}
+          onToggleChartSeries={toggleChartSeriesVisibility}
+        />
       </Card.Header>
 
       <Box
@@ -30,14 +42,16 @@ export function ChartPanel({ state }: ChartPanelProps) {
       >
         <Box minH={{ base: '240px', md: '280px' }} position="relative">
           <FrequencyChart
-            series={chartSeries}
+            series={visibleChartSeries}
             fMin={fMin}
             fMax={fMax}
             suggestions={state.suggestions}
-            filterOverlays={state.filterOverlays}
+            filterOverlays={showFilterOverlays ? filterOverlays : []}
             onAddCustomBand={state.addCustomBand}
           />
         </Box>
+
+        <VerificationPanel state={state} />
 
         <ChartEqEditor state={state} />
       </Box>

@@ -10,7 +10,7 @@ export function ChartEqEditor({ state }: ChartEqEditorProps) {
     setSuggestionQ,
     setSuggestionGain,
     toggleSuggestionEnabled,
-    removeCustomBand,
+    removeBand,
     eqSummary,
     activeToneProfile,
     isMockMeasurement,
@@ -32,7 +32,7 @@ export function ChartEqEditor({ state }: ChartEqEditorProps) {
         setSuggestionQ={setSuggestionQ}
         setSuggestionGain={setSuggestionGain}
         toggleSuggestionEnabled={toggleSuggestionEnabled}
-        removeCustomBand={removeCustomBand}
+        removeBand={removeBand}
         embedded
       />
     </Box>

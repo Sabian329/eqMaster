@@ -49,6 +49,7 @@ export function useFrequencyChart(
     series.find((item) => !['target', 'corrected'].includes(item.id));
 
   const correctedSeries = series.find((item) => item.id === 'corrected');
+  const verifiedSeries = series.find((item) => item.id === 'verified');
   const targetSeries = series.find((item) => item.id === 'target');
   const tooltipCurve = measuredSeries?.curve ?? [];
 
@@ -101,6 +102,9 @@ export function useFrequencyChart(
     const correctedDb = correctedSeries
       ? lookupDbAtFrequency(correctedSeries.curve, point.frequency)
       : null;
+    const verifiedDb = verifiedSeries
+      ? lookupDbAtFrequency(verifiedSeries.curve, point.frequency)
+      : null;
     const targetDb = targetSeries
       ? lookupDbAtFrequency(targetSeries.curve, point.frequency)
       : null;
@@ -113,6 +117,7 @@ export function useFrequencyChart(
         point.frequency,
         point.db,
         correctedDb,
+        verifiedDb,
         targetDb,
         formatFrequency,
         formatDb,

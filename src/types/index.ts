@@ -69,6 +69,7 @@ export interface MeasurementMeta {
   fftSize: number;
   calibrationPoints: number;
   recorderMode: string;
+  verificationMode?: boolean;
 }
 
 export interface ChartBounds {
