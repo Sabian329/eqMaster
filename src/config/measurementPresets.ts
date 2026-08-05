@@ -22,13 +22,13 @@ export const MEASUREMENT_PRESETS: MeasurementPreset[] = [
 		name: "Room",
 		tagline: "Room acoustics",
 		description:
-			"Balanced 20 Hz–20 kHz range, moderate smoothing, and a 10 s sweep — a good starting point for listening-room correction.",
+			"Balanced 40 Hz–20 kHz range, 1/6 octave smoothing, and a 10 s sweep — a good starting point for listening-room correction.",
 		accent: "#65a9ff",
 		channel: "both",
-		fStart: 20,
+		fStart: 40,
 		fEnd: 20000,
 		duration: 10,
-		smoothing: 12,
+		smoothing: 6,
 		level: -24,
 	},
 	{

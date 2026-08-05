@@ -4,7 +4,7 @@ import type { FrequencyChartProps } from '../types';
 
 export function FrequencyChart({
   series,
-  fMin = 20,
+  fMin = 40,
   fMax = 20000,
   suggestions = [],
   filterOverlays = [],

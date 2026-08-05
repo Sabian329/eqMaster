@@ -2,7 +2,8 @@ import type { ChartBounds, CurvePoint, Suggestion } from '../types';
 import { clampBipolarGain } from './suggestionQ';
 import { lookupDbAtFrequency } from './curveLookup';
 
-const MIN_BAND_RATIO = 1.15;
+/** Minimum absolute spacing between bands (manual add from chart). */
+export const MIN_BAND_SPACING_HZ = 1;
 
 export function frequencyAtCanvasX(
   clientX: number,
@@ -21,13 +22,11 @@ export function frequencyAtCanvasX(
 export function isBandTooClose(
   frequency: number,
   suggestions: Suggestion[],
-  minRatio = MIN_BAND_RATIO,
+  minSpacingHz = MIN_BAND_SPACING_HZ,
 ): boolean {
-  return suggestions.some((item) => {
-    const ratio =
-      Math.max(item.frequency, frequency) / Math.min(item.frequency, frequency);
-    return ratio < minRatio;
-  });
+  return suggestions.some(
+    (item) => Math.abs(item.frequency - frequency) < minSpacingHz,
+  );
 }
 
 export function createCustomSuggestion(

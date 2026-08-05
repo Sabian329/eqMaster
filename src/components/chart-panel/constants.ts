@@ -28,7 +28,7 @@ export const CHART_STATS = [
 
 export function resolveChartFrequencyRange(
   chartSeries: RoomEqState['chartSeries'],
-  fMinFallback = 20,
+  fMinFallback = 40,
 ): { fMin: number; fMax: number } {
   const fMin = fMinFallback;
   const fMax = chartSeries.reduce((max, series) => {
@@ -36,7 +36,7 @@ export function resolveChartFrequencyRange(
       ? series.curve[series.curve.length - 1].frequency
       : 0;
     return Math.max(max, lastFrequency);
-  }, fMin || 20);
+  }, fMin || 40);
   return { fMin, fMax };
 }
 

@@ -20,7 +20,7 @@ export function ChartPanel({ state }: ChartPanelProps) {
   const displayMeta = resolveDisplayMeta(state);
   const { fMin, fMax } = resolveChartFrequencyRange(
     chartSeries,
-    displayMeta?.fMin ?? 20,
+    displayMeta?.fMin ?? 40,
   );
 
   return (

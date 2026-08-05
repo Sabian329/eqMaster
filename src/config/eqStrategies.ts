@@ -1,4 +1,4 @@
-export type EqStrategyId = 'balanced' | 'fit' | 'resonance';
+export type EqStrategyId = 'balanced' | 'fit' | 'resonance' | 'refined';
 
 export interface EqStrategy {
   id: EqStrategyId;
@@ -23,6 +23,12 @@ export const EQ_STRATEGIES: EqStrategy[] = [
     label: 'Resonance only',
     description:
       'Aggressive narrow peak cuts; minimal broad bass shelving. Boost dips manually or with custom bands.',
+  },
+  {
+    id: 'refined',
+    label: 'Pro (thick)',
+    description:
+      'Flatness target — narrow cuts on peaks, wide boosts on dips, gains tuned to hug the reference line.',
   },
 ];
 

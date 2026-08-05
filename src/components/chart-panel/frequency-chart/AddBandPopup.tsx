@@ -35,7 +35,7 @@ export function AddBandPopup({
         <div className="chart-add-band-popup__freq">{formatFrequency(frequency)}</div>
         <div className="chart-add-band-popup__meta">Measured: {formatDb(measuredDb)}</div>
         {tooClose ? (
-          <div className="chart-add-band-popup__hint">Too close to an existing band</div>
+          <div className="chart-add-band-popup__hint">Within 1 Hz of an existing band</div>
         ) : (
           <button
             type="button"

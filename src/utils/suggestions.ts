@@ -1,5 +1,17 @@
 import type { EqStrategyId } from '../config/eqStrategies';
 import type { CurvePoint, Suggestion } from '../types';
+import {
+  computeRefinedBoostGain,
+  computeRefinedCutGain,
+  estimateFilterQ,
+  optimizeRefinedSuggestions,
+  refinedCandidateScore,
+  refinedDipThreshold,
+  refinedMinSpacing,
+  refinedPeakThreshold,
+  shapeRefinedFilterQ,
+  shouldSkipRefinedPeakCut,
+} from './perceptualEq';
 
 type Candidate = {
   index: number;
@@ -15,6 +27,14 @@ const SELECTION_PASSES = [
   { thresholdScale: 0.72, minSpacing: 1.16, radius: 4 },
   { thresholdScale: 0.52, minSpacing: 1.11, radius: 3 },
   { thresholdScale: 0.38, minSpacing: 1.07, radius: 3 },
+] as const;
+
+/** Flatness-first selection — fewer stacked filters, wider spacing. */
+const REFINED_SELECTION_PASSES = [
+  { thresholdScale: 1, minSpacing: 1.2, radius: 4 },
+  { thresholdScale: 0.72, minSpacing: 1.16, radius: 3 },
+  { thresholdScale: 0.52, minSpacing: 1.12, radius: 2 },
+  { thresholdScale: 0.38, minSpacing: 1.08, radius: 2 },
 ] as const;
 
 const MIN_PEAK_DB = 1.2;
@@ -39,6 +59,8 @@ function estimateQ(curve: CurvePoint[], index: number, deviation: number): numbe
 }
 
 function peakThresholdHz(frequency: number, strategy: EqStrategyId, scale = 1): number {
+  if (strategy === 'refined') return refinedPeakThreshold(frequency, scale);
+
   let base: number;
   if (strategy === 'fit') base = frequency < 250 ? 5 : 3;
   else if (strategy === 'resonance') base = frequency < 200 ? 7 : 4;
@@ -48,6 +70,8 @@ function peakThresholdHz(frequency: number, strategy: EqStrategyId, scale = 1): 
 }
 
 function dipThresholdHz(frequency: number, strategy: EqStrategyId, scale = 1): number {
+  if (strategy === 'refined') return refinedDipThreshold(frequency, scale);
+
   let base: number;
   if (strategy === 'fit' && frequency < 400) base = -3;
   else base = -4;
@@ -61,6 +85,9 @@ function shouldSkipPeakCut(
   q: number,
   strategy: EqStrategyId,
 ): boolean {
+  if (strategy === 'refined') {
+    return shouldSkipRefinedPeakCut(frequency, deviation, q);
+  }
   if (strategy !== 'resonance') return false;
   if (frequency >= 250) return false;
   if (deviation >= 8) return false;
@@ -71,7 +98,12 @@ function computeCutGain(
   frequency: number,
   deviation: number,
   strategy: EqStrategyId,
+  q = 1,
 ): number {
+  if (strategy === 'refined') {
+    return computeRefinedCutGain(deviation, frequency, q);
+  }
+
   const base = -Math.min(10, Math.max(1, deviation - 1));
 
   if (strategy === 'balanced') return base;
@@ -89,7 +121,16 @@ function computeCutGain(
   return Math.max(frequency < 150 ? -6 : -8, gain);
 }
 
-function computeBoostGain(deviation: number, frequency: number, strategy: EqStrategyId): number {
+function computeBoostGain(
+  deviation: number,
+  frequency: number,
+  strategy: EqStrategyId,
+  q = 1,
+): number {
+  if (strategy === 'refined') {
+    return computeRefinedBoostGain(deviation, frequency, q);
+  }
+
   const depth = Math.abs(deviation);
   const deepDip = deviation <= -8;
 
@@ -113,7 +154,12 @@ function scoreForCandidate(
   deviation: number,
   frequency: number,
   strategy: EqStrategyId,
+  q = 1,
 ): number {
+  if (strategy === 'refined') {
+    return refinedCandidateScore(kind, deviation, frequency, q);
+  }
+
   if (kind === 'cut') {
     let score = deviation;
     if (strategy === 'fit' && frequency < 250) score *= 0.55;
@@ -132,7 +178,13 @@ function adjustQForStrategy(
   frequency: number,
   kind: 'cut' | 'boost',
   strategy: EqStrategyId,
+  gainDb = 0,
+  deviation = 0,
 ): number {
+  if (strategy === 'refined') {
+    return shapeRefinedFilterQ(q, frequency, kind, gainDb, deviation);
+  }
+
   if (strategy === 'fit' && kind === 'cut' && frequency < 300) {
     return Math.max(0.45, Math.min(q, q * 0.82));
   }
@@ -169,7 +221,12 @@ function findCandidates(
     const point = curve[i];
     if (point.frequency < 25 || point.frequency > 18000) continue;
 
-    const qEstimate = estimateQ(curve, i, point.db);
+    if (strategy === 'refined' && point.frequency > 1500) continue;
+
+    const qEstimate =
+      strategy === 'refined'
+        ? estimateFilterQ(curve, i, 'cut')
+        : estimateQ(curve, i, point.db);
 
     if (
       isLocalExtremum(curve, i, radius, 'cut') &&
@@ -183,10 +240,15 @@ function findCandidates(
         frequency: point.frequency,
         deviation: point.db,
         kind: 'cut',
-        score: scoreForCandidate('cut', point.db, point.frequency, strategy),
+        score: scoreForCandidate('cut', point.db, point.frequency, strategy, qEstimate),
         q: qEstimate,
       });
     }
+
+    const dipQEstimate =
+      strategy === 'refined'
+        ? estimateFilterQ(curve, i, 'boost')
+        : estimateQ(curve, i, point.db);
 
     if (
       isLocalExtremum(curve, i, radius, 'boost') &&
@@ -197,8 +259,8 @@ function findCandidates(
         frequency: point.frequency,
         deviation: point.db,
         kind: 'boost',
-        score: scoreForCandidate('boost', point.db, point.frequency, strategy),
-        q: qEstimate,
+        score: scoreForCandidate('boost', point.db, point.frequency, strategy, dipQEstimate),
+        q: dipQEstimate,
       });
     }
   }
@@ -206,11 +268,21 @@ function findCandidates(
   return candidates;
 }
 
-function isTooClose(frequency: number, selected: Candidate[], minSpacing: number): boolean {
+function isTooClose(
+  frequency: number,
+  selected: Candidate[],
+  minSpacing: number,
+  strategy: EqStrategyId = 'balanced',
+): boolean {
   return selected.some((item) => {
+    const pairFrequency = Math.min(frequency, item.frequency);
+    const spacing =
+      strategy === 'refined'
+        ? refinedMinSpacing(pairFrequency, minSpacing)
+        : minSpacing;
     const ratio =
       Math.max(item.frequency, frequency) / Math.min(item.frequency, frequency);
-    return ratio < minSpacing;
+    return ratio < spacing;
   });
 }
 
@@ -219,6 +291,7 @@ function mergeCandidates(
   pool: Candidate[],
   maxBands: number,
   minSpacing: number,
+  strategy: EqStrategyId,
 ): Candidate[] {
   const next = [...selected];
   const usedIndices = new Set(next.map((item) => item.index));
@@ -226,7 +299,7 @@ function mergeCandidates(
   for (const candidate of pool) {
     if (next.length >= maxBands) break;
     if (usedIndices.has(candidate.index)) continue;
-    if (isTooClose(candidate.frequency, next, minSpacing)) continue;
+    if (isTooClose(candidate.frequency, next, minSpacing, strategy)) continue;
     next.push(candidate);
     usedIndices.add(candidate.index);
   }
@@ -240,8 +313,10 @@ function selectCandidates(
   maxBands: number,
 ): Candidate[] {
   let selected: Candidate[] = [];
+  const passes =
+    strategy === 'refined' ? REFINED_SELECTION_PASSES : SELECTION_PASSES;
 
-  for (const pass of SELECTION_PASSES) {
+  for (const pass of passes) {
     if (selected.length >= maxBands) break;
 
     const pool = findCandidates(
@@ -251,31 +326,61 @@ function selectCandidates(
       pass.thresholdScale,
     ).sort((a, b) => b.score - a.score);
 
-    selected = mergeCandidates(selected, pool, maxBands, pass.minSpacing);
+    selected = mergeCandidates(selected, pool, maxBands, pass.minSpacing, strategy);
   }
 
   return selected;
 }
 
 function candidateToSuggestion(item: Candidate, strategy: EqStrategyId): Suggestion {
-  const q = adjustQForStrategy(item.q, item.frequency, item.kind, strategy);
-
   if (item.kind === 'cut') {
-    const gain = computeCutGain(item.frequency, item.deviation, strategy);
+    const gain = computeCutGain(item.frequency, item.deviation, strategy, item.q);
+    const q = adjustQForStrategy(
+      item.q,
+      item.frequency,
+      item.kind,
+      strategy,
+      gain,
+      item.deviation,
+    );
+    const finalGain =
+      strategy === 'refined'
+        ? computeRefinedCutGain(item.deviation, item.frequency, q)
+        : gain;
+
     return {
       kind: 'cut',
       frequency: item.frequency,
       deviation: item.deviation,
-      gain,
+      gain: finalGain,
       q,
       note:
-        strategy === 'fit'
-          ? 'Gentle cut — partial correction. Add a custom band to recover bass if needed.'
-          : 'Try a cut first. Set filter width based on the chart and run a verification measurement.',
+        strategy === 'refined'
+          ? 'Pro cut — narrow peak only; wide humps in bass are left alone.'
+          : strategy === 'fit'
+            ? 'Gentle cut — partial correction. Add a custom band to recover bass if needed.'
+            : 'Try a cut first. Set filter width based on the chart and run a verification measurement.',
     };
   }
 
-  const gain = computeBoostGain(item.deviation, item.frequency, strategy);
+  const provisionalGain = computeBoostGain(
+    item.deviation,
+    item.frequency,
+    strategy,
+    item.q,
+  );
+  const q = adjustQForStrategy(
+    item.q,
+    item.frequency,
+    item.kind,
+    strategy,
+    provisionalGain,
+    item.deviation,
+  );
+  const gain =
+    strategy === 'refined'
+      ? computeRefinedBoostGain(item.deviation, item.frequency, q)
+      : provisionalGain;
   const deepDip = item.deviation <= -8;
   return {
     kind: 'boost',
@@ -283,11 +388,14 @@ function candidateToSuggestion(item: Candidate, strategy: EqStrategyId): Suggest
     deviation: item.deviation,
     gain,
     q,
-    note: deepDip
-      ? 'Deep dip — start with a small boost. If headroom is limited, prefer placement changes over heavy EQ.'
-      : strategy === 'fit' && item.frequency < 400
-        ? 'Fit mode favours filling bass/mid dips — adjust gain to taste.'
-        : 'Boost only with caution. If the effect is small, disable the band.',
+    note:
+      strategy === 'refined'
+        ? 'Pro boost — wide fill toward the flat reference line.'
+        : deepDip
+          ? 'Deep dip — start with a small boost. If headroom is limited, prefer placement changes over heavy EQ.'
+          : strategy === 'fit' && item.frequency < 400
+            ? 'Fit mode favours filling bass/mid dips — adjust gain to taste.'
+            : 'Boost only with caution. If the effect is small, disable the band.',
   };
 }
 
@@ -298,7 +406,11 @@ export function createSuggestions(
 ): Suggestion[] {
   if (!curve.length) return [];
 
-  return selectCandidates(curve, strategy, maxBands)
+  const suggestions = selectCandidates(curve, strategy, maxBands)
     .sort((a, b) => a.frequency - b.frequency)
     .map((item) => candidateToSuggestion(item, strategy));
+
+  if (strategy !== 'refined') return suggestions;
+
+  return optimizeRefinedSuggestions(curve, suggestions);
 }

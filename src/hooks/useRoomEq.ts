@@ -26,6 +26,7 @@ import { downloadText, safePresetFilename } from '../utils/download';
 import { formatFrequency } from '../utils/format';
 import { averageCurves } from '../utils/averageCurves';
 import { createSuggestions } from '../utils/suggestions';
+import { suggestHeadroomPreampDb } from '../utils/perceptualEq';
 import { sanitizeCurve } from '../utils/sanitizeCurve';
 import { applyToneTarget, buildTargetCurve } from '../utils/toneProfile';
 import { buildCorrectedCurve } from '../utils/correctedCurve';
@@ -162,10 +163,10 @@ export function useRoomEq() {
   const [inputDeviceId, setInputDeviceId] = useState('');
   const [outputDeviceId, setOutputDeviceId] = useState('');
   const [channel, setChannel] = useState<ChannelMode>('both');
-  const [fStart, setFStart] = useState(20);
+  const [fStart, setFStart] = useState(40);
   const [fEnd, setFEnd] = useState(20000);
   const [duration, setDuration] = useState(10);
-  const [smoothing, setSmoothing] = useState(12);
+  const [smoothing, setSmoothing] = useState(6);
   const [level, setLevel] = useState(-24);
   const [measurementCount, setMeasurementCount] = useState<MeasurementCount>(1);
   const [safetyCheck, setSafetyCheck] = useState(false);
@@ -191,7 +192,7 @@ export function useRoomEq() {
   const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
 
   const [eqBandCount, setEqBandCount] = useState<EqBandCount>(8);
-  const [eqStrategyId, setEqStrategyId] = useState<EqStrategyId>('fit');
+  const [eqStrategyId, setEqStrategyId] = useState<EqStrategyId>('refined');
   const [toneProfileId, setToneProfileId] = useState<ToneProfileId>('flat');
   const [setupMode, setSetupMode] = useState<SetupMode>('live');
 
@@ -624,7 +625,14 @@ export function useRoomEq() {
         ? ` (${autoCount} auto + ${customCount} custom)`
         : '';
     const strategyLabel = getEqStrategy(eqStrategyId).label;
-    return `${total} filter${total > 1 ? 's' : ''} · ${strategyLabel} · ${activeToneProfile.label} (max ${eqBandCount} auto bands)${customSuffix}.`;
+    let summary = `${total} filter${total > 1 ? 's' : ''} · ${strategyLabel} · ${activeToneProfile.label} (max ${eqBandCount} auto bands)${customSuffix}.`;
+    if (eqStrategyId === 'refined') {
+      const preampHint = suggestHeadroomPreampDb(suggestions);
+      if (preampHint !== null) {
+        summary += ` Suggested preamp ${preampHint.toFixed(1)} dB for boost headroom.`;
+      }
+    }
+    return summary;
   }, [
     curve.length,
     suggestions.length,
