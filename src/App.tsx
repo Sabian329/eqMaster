@@ -5,10 +5,10 @@ import {
 	Stack,
 } from "@chakra-ui/react";
 import { useRoomEq } from "./hooks/useRoomEq";
-import { ConfigPanel } from "./components/ConfigPanel";
-import { ChartPanel } from "./components/ChartPanel";
-import { ResultsPanel } from "./components/ResultsPanel";
-import { MeasurementSessionModal } from "./components/MeasurementSessionModal";
+import { ConfigPanel } from "./components/config-panel";
+import { ChartPanel } from "./components/chart-panel";
+import { ResultsPanel } from "./components/results-panel";
+import { MeasurementSessionModal } from "./components/measurement-session";
 
 function App() {
 	const state = useRoomEq();

@@ -140,11 +140,14 @@ export function drawChart(
   context.clip();
 
   const ordered = [...series].sort((a, b) => {
-    if (a.id === 'target') return -1;
-    if (b.id === 'target') return 1;
-    if (a.id === 'average') return 1;
-    if (b.id === 'average') return -1;
-    return 0;
+    const layer = (id: string) => {
+      if (id === 'target') return 0;
+      if (id.startsWith('run-')) return 1;
+      if (id === 'average') return 2;
+      if (id === 'corrected') return 3;
+      return 2;
+    };
+    return layer(a.id) - layer(b.id);
   });
 
   for (const item of ordered) {

@@ -18,12 +18,10 @@ export function buildPresetText(
   ];
 
   suggestions.forEach((item, index) => {
-    const enabled = item.kind === 'null' ? 'OFF' : 'ON';
+    const hasGain = item.gain !== null && item.gain !== 0;
+    const enabled = item.enabled !== false && hasGain ? 'ON' : 'OFF';
     const frequency = Math.max(1, Math.round(item.frequency));
-    const gain =
-      item.kind === 'null'
-        ? Math.min(3, Math.max(1, Math.abs(item.deviation) - 2))
-        : Number(item.gain) || 0;
+    const gain = hasGain ? Number(item.gain) : 0;
     const bandwidth = Math.max(
       0.01,
       Math.min(8, qToBandwidthOctaves(item.q)),

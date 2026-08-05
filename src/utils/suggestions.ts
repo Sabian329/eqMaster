@@ -58,8 +58,8 @@ export function createSuggestions(curve: CurvePoint[], maxBands = 8): Suggestion
         index: i,
         frequency: point.frequency,
         deviation: point.db,
-        kind: point.db <= -8 ? 'null' : 'boost',
-        score: Math.abs(point.db) * (point.db <= -8 ? 0.8 : 0.7),
+        kind: 'boost',
+        score: Math.abs(point.db) * 0.75,
         q: estimateQ(curve, i, point.db),
       });
     }
@@ -102,18 +102,23 @@ export function createSuggestions(curve: CurvePoint[], maxBands = 8): Suggestion
           deviation: item.deviation,
           gain: null,
           q: item.q,
-          note: 'Likely room cancellation. Do not boost heavily; check speaker, subwoofer, or microphone placement.',
+          note: 'Likely room cancellation. Enable only with caution and verify with a second measurement.',
         };
       }
 
-      const gain = Math.min(3, Math.max(1, Math.abs(item.deviation) - 2));
+      const deepDip = item.deviation <= -8;
+      const gain = deepDip
+        ? Math.min(2, Math.max(0.5, Math.abs(item.deviation) - 5))
+        : Math.min(3, Math.max(1, Math.abs(item.deviation) - 2));
       return {
         kind: 'boost' as const,
         frequency: item.frequency,
         deviation: item.deviation,
         gain,
         q: item.q,
-        note: 'Boost only with caution. If the effect is small, leave the filter disabled.',
+        note: deepDip
+          ? 'Deep dip — start with a small boost. If headroom is limited, prefer placement changes over heavy EQ.'
+          : 'Boost only with caution. If the effect is small, disable the band.',
       };
     });
 }

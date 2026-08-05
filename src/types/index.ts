@@ -1,5 +1,7 @@
 export type MeasurementCount = 1 | 2 | 3;
 
+export type SetupMode = 'simple' | 'advanced' | 'test';
+
 export type MeasurementSessionStep =
   | 'mic-test'
   | 'ready'
@@ -42,6 +44,7 @@ export interface Suggestion {
   gain: number | null;
   q: number;
   note: string;
+  enabled?: boolean;
 }
 
 export interface MeasurementMeta {

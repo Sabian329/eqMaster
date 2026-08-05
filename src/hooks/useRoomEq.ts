@@ -17,6 +17,7 @@ import type {
   MeasurementRun,
   MeasurementSessionStep,
   SelectedOutputDevice,
+  SetupMode,
   Suggestion,
 } from '../types';
 import { buildPresetText } from '../utils/preset';
@@ -26,6 +27,15 @@ import { averageCurves } from '../utils/averageCurves';
 import { createSuggestions } from '../utils/suggestions';
 import { sanitizeCurve } from '../utils/sanitizeCurve';
 import { applyToneTarget, buildTargetCurve } from '../utils/toneProfile';
+import { buildCorrectedCurve } from '../utils/correctedCurve';
+import {
+  applySuggestionAdjustments,
+  clampSuggestionQ,
+  defaultBoostGainForDip,
+  isSuggestionEnabled,
+  suggestionKey,
+} from '../utils/suggestionQ';
+import { runMockMeasurement, createMockMeasurementRun } from '../utils/mockMeasurement';
 import {
   MEASUREMENT_PRESETS,
   type MeasurementPresetId,
@@ -169,6 +179,9 @@ export function useRoomEq() {
 
   const [eqBandCount, setEqBandCount] = useState<EqBandCount>(8);
   const [toneProfileId, setToneProfileId] = useState<ToneProfileId>('flat');
+  const [setupMode, setSetupMode] = useState<SetupMode>('simple');
+
+  const isTestMode = setupMode === 'test';
 
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionStep, setSessionStep] = useState<MeasurementSessionStep>('mic-test');
@@ -180,6 +193,13 @@ export function useRoomEq() {
   const [presetName, setPresetName] = useState('Room EQ');
   const [presetPreamp, setPresetPreamp] = useState(0);
   const [presetStatus, setPresetStatus] = useState('');
+  const [suggestionQOverrides, setSuggestionQOverrides] = useState<Record<string, number>>({});
+  const [suggestionGainOverrides, setSuggestionGainOverrides] = useState<
+    Record<string, number>
+  >({});
+  const [suggestionEnabledOverrides, setSuggestionEnabledOverrides] = useState<
+    Record<string, boolean>
+  >({});
 
   const refreshDevices = useCallback(
     async (permissionJustGranted = false) => {
@@ -270,8 +290,9 @@ export function useRoomEq() {
     return 'This browser does not support Web Audio output selection. The system default output will be used.';
   }, [env]);
 
-  const measureEnabled =
-    env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
+  const measureEnabled = isTestMode
+    ? !running && !meterActive && !sessionOpen
+    : env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
 
   const activeToneProfile = useMemo(
     () => getToneProfile(toneProfileId),
@@ -283,19 +304,126 @@ export function useRoomEq() {
     return buildTargetCurve(curve, toneProfileId);
   }, [curve, toneProfileId]);
 
-  const suggestions = useMemo((): Suggestion[] => {
+  const computedSuggestions = useMemo((): Suggestion[] => {
     if (!curve.length) return [];
     const adjustedCurve = applyToneTarget(curve, activeToneProfile);
     return createSuggestions(adjustedCurve, eqBandCount);
   }, [curve, activeToneProfile, eqBandCount]);
 
+  const suggestionSignature = useMemo(
+    () =>
+      computedSuggestions
+        .map((item) => suggestionKey(item))
+        .join('|'),
+    [computedSuggestions],
+  );
+
+  useEffect(() => {
+    setSuggestionQOverrides({});
+    setSuggestionGainOverrides({});
+    setSuggestionEnabledOverrides({});
+  }, [suggestionSignature]);
+
+  const suggestions = useMemo(
+    () =>
+      applySuggestionAdjustments(
+        computedSuggestions,
+        suggestionQOverrides,
+        suggestionGainOverrides,
+        suggestionEnabledOverrides,
+      ),
+    [
+      computedSuggestions,
+      suggestionQOverrides,
+      suggestionGainOverrides,
+      suggestionEnabledOverrides,
+    ],
+  );
+
+  const globalBandQ = useMemo(() => {
+    if (!suggestions.length) return 1;
+    const sorted = suggestions.map((item) => item.q).sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  }, [suggestions]);
+
+  const setSuggestionQ = useCallback((key: string, q: number) => {
+    setSuggestionQOverrides((previous) => ({
+      ...previous,
+      [key]: clampSuggestionQ(q),
+    }));
+  }, []);
+
+  const setAllSuggestionQ = useCallback(
+    (q: number) => {
+      const clamped = clampSuggestionQ(q);
+      const next: Record<string, number> = {};
+      for (const item of computedSuggestions) {
+        next[suggestionKey(item)] = clamped;
+      }
+      setSuggestionQOverrides(next);
+    },
+    [computedSuggestions],
+  );
+
+  const scaleAllSuggestionQ = useCallback(
+    (factor: number) => {
+      const safeFactor = Math.max(0.25, Math.min(2, factor));
+      const next: Record<string, number> = {};
+      for (const item of computedSuggestions) {
+        next[suggestionKey(item)] = clampSuggestionQ(item.q * safeFactor);
+      }
+      setSuggestionQOverrides(next);
+    },
+    [computedSuggestions],
+  );
+
+  const setSuggestionGain = useCallback((key: string, gain: number) => {
+    setSuggestionGainOverrides((previous) => ({
+      ...previous,
+      [key]: gain,
+    }));
+  }, []);
+
+  const toggleSuggestionEnabled = useCallback(
+    (key: string) => {
+      const item = computedSuggestions.find((entry) => suggestionKey(entry) === key);
+      if (!item) return;
+
+      setSuggestionEnabledOverrides((previous) => {
+        const currentlyEnabled = isSuggestionEnabled(item, previous);
+        const nextEnabled = !currentlyEnabled;
+
+        if (nextEnabled && item.kind === 'null') {
+          setSuggestionGainOverrides((gainPrevious) => ({
+            ...gainPrevious,
+            [key]:
+              gainPrevious[key] ?? defaultBoostGainForDip(item.deviation),
+          }));
+        }
+
+        return { ...previous, [key]: nextEnabled };
+      });
+    },
+    [computedSuggestions],
+  );
+
+  const resetSuggestionQ = useCallback(() => {
+    setSuggestionQOverrides({});
+    setSuggestionGainOverrides({});
+    setSuggestionEnabledOverrides({});
+  }, []);
+
+  const correctedCurve = useMemo(() => {
+    if (!curve.length) return [];
+    return buildCorrectedCurve(curve, suggestions, presetPreamp);
+  }, [curve, suggestions, presetPreamp]);
+
   const chartSeries = useMemo(() => {
     const base = buildChartSeries(measurementRuns, averagedRun);
-    if (!targetCurve.length) return base;
+    const overlays: ChartSeries[] = [];
 
-    return [
-      ...base,
-      {
+    if (targetCurve.length) {
+      overlays.push({
         id: 'target',
         label: activeToneProfile.label,
         curve: targetCurve,
@@ -303,9 +431,28 @@ export function useRoomEq() {
         lineWidth: 1.6,
         alpha: 0.95,
         dash: [7, 6],
-      },
-    ];
-  }, [measurementRuns, averagedRun, targetCurve, activeToneProfile.label]);
+      });
+    }
+
+    if (correctedCurve.length) {
+      overlays.push({
+        id: 'corrected',
+        label: 'After EQ',
+        curve: correctedCurve,
+        color: '#ff9f6b',
+        lineWidth: 2.4,
+        alpha: 1,
+      });
+    }
+
+    return [...base, ...overlays];
+  }, [
+    measurementRuns,
+    averagedRun,
+    targetCurve,
+    correctedCurve,
+    activeToneProfile.label,
+  ]);
 
   const eqSummary = useMemo(() => {
     if (!curve.length) return '';
@@ -385,12 +532,60 @@ export function useRoomEq() {
     setMeasurementMeta(baseMeta);
     setPresetStatus('');
     setStatus(
-      runs.length > 1
-        ? `Session complete — averaged ${runs.length} measurements`
-        : 'Measurement complete',
+      baseMeta.recorderMode === 'mock'
+        ? runs.length > 1
+          ? `Mock session loaded — averaged ${runs.length} runs`
+          : 'Mock measurement loaded'
+        : runs.length > 1
+          ? `Session complete — averaged ${runs.length} measurements`
+          : 'Measurement complete',
       100,
     );
   }, [setStatus]);
+
+  const loadMockDemoResults = useCallback(() => {
+    const { inputLabel, outputLabel } = getDeviceLabels();
+    const runs: MeasurementRun[] = [];
+
+    for (let runIndex = 1; runIndex <= measurementCount; runIndex++) {
+      const { curve: mockCurve, measurementMeta } = createMockMeasurementRun({
+        fMin: fStart,
+        fMax: fEnd,
+        smoothing,
+        durationSeconds: duration,
+        levelDb: level,
+        channel,
+        runIndex,
+        inputLabel,
+        outputLabel,
+      });
+
+      runs.push({
+        index: runIndex,
+        label: `Mock ${runIndex}`,
+        curve: mockCurve,
+        suggestions: [],
+        meta: measurementMeta,
+      });
+    }
+
+    applySessionResults(runs);
+  }, [
+    applySessionResults,
+    channel,
+    duration,
+    fEnd,
+    fStart,
+    getDeviceLabels,
+    level,
+    measurementCount,
+    smoothing,
+  ]);
+
+  useEffect(() => {
+    if (setupMode !== 'test' || sessionOpen || running || curve.length > 0) return;
+    loadMockDemoResults();
+  }, [setupMode, sessionOpen, running, curve.length, loadMockDemoResults]);
 
   const stopSessionMeter = useCallback(async () => {
     await sessionMeterRef.current?.stop();
@@ -491,11 +686,14 @@ export function useRoomEq() {
     await stopSessionMeter();
 
     setSessionOpen(true);
-    setSessionStep('mic-test');
+    setSessionStep(isTestMode ? 'ready' : 'mic-test');
     setSessionTargetCount(measurementCount);
     setSessionRuns([]);
     setSessionMeterDb(-Infinity);
-    setStatus('Measurement session started', 0);
+    setStatus(
+      isTestMode ? 'Test session started — mock data only' : 'Measurement session started',
+      0,
+    );
   };
 
   const handleSessionSkipMicTest = () => {
@@ -525,10 +723,26 @@ export function useRoomEq() {
 
     try {
       const runIndex = sessionRuns.length + 1;
-      const result = await executeMeasurement(setStatus);
+      const { inputLabel, outputLabel } = getDeviceLabels();
+      const result = isTestMode
+        ? await runMockMeasurement(
+            {
+              fMin: fStart,
+              fMax: fEnd,
+              smoothing,
+              durationSeconds: duration,
+              levelDb: level,
+              channel,
+              runIndex,
+              inputLabel,
+              outputLabel,
+            },
+            setStatus,
+          )
+        : await executeMeasurement(setStatus);
       const run: MeasurementRun = {
         index: runIndex,
-        label: `Run ${runIndex}`,
+        label: isTestMode ? `Mock ${runIndex}` : `Run ${runIndex}`,
         curve: result.curve,
         suggestions: result.suggestions,
         meta: result.measurementMeta,
@@ -536,7 +750,12 @@ export function useRoomEq() {
 
       setSessionRuns((previous) => [...previous, run]);
       setSessionStep('run-complete');
-      setStatus(`Measurement ${runIndex} complete`, 100);
+      setStatus(
+        isTestMode
+          ? `Mock measurement ${runIndex} complete`
+          : `Measurement ${runIndex} complete`,
+        100,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(message, 0);
@@ -683,8 +902,20 @@ export function useRoomEq() {
     meterActive,
     meterDb,
     measureEnabled,
+    setupMode,
+    setSetupMode,
+    isTestMode,
+    loadMockDemoResults,
+    isMockMeasurement: measurementMeta?.recorderMode === 'mock',
     curve,
     suggestions,
+    globalBandQ,
+    setSuggestionQ,
+    setSuggestionGain,
+    toggleSuggestionEnabled,
+    setAllSuggestionQ,
+    scaleAllSuggestionQ,
+    resetSuggestionQ,
     eqBandCount,
     setEqBandCount,
     eqBandOptions: EQ_BAND_OPTIONS,
