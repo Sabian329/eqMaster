@@ -234,5 +234,6 @@ export {
   tabStyles,
   setupSectionStyles,
   launchPanelStyles,
+  modalStyles,
   sliderStyles,
 } from './components';

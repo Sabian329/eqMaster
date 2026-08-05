@@ -3,6 +3,16 @@ import AnalysisWorker from '../workers/analysis.worker?worker';
 import workletUrl from '../worklets/pcm-recorder-processor.ts?url';
 import { connectEqChain, renderSweepWithEq, type EqApplyProfile } from './eqChain';
 import {
+  bindMeasurementAbort,
+  createMeasurementAbortError,
+  throwIfMeasurementAborted,
+  waitForAbort,
+} from './measurementAbort';
+import {
+  readMeasurementAudioFrame,
+  type MeasurementAudioFrame,
+} from './measurementAudioVisual';
+import {
   createAudioConstraints,
   createAudioContext,
   makePinkNoise,
@@ -67,9 +77,16 @@ export function analyzeInWorker(payload: {
   smoothing: number;
   calibration: [number, number][];
   onProgress?: (label: string, value: number) => void;
+  abortSignal?: AbortSignal;
 }): Promise<AnalysisResult> {
   return new Promise((resolve, reject) => {
     const worker = new AnalysisWorker();
+
+    const onAbort = () => {
+      worker.terminate();
+      reject(createMeasurementAbortError());
+    };
+    const unbindAbort = bindMeasurementAbort(payload.abortSignal, onAbort);
 
     worker.onmessage = (event: MessageEvent) => {
       const message = event.data || {};
@@ -77,18 +94,23 @@ export function analyzeInWorker(payload: {
       if (message.type === 'progress') {
         payload.onProgress?.(message.label || 'Analyzing…', message.value || 75);
       } else if (message.type === 'done') {
+        unbindAbort();
         worker.terminate();
         resolve(message.result);
       } else if (message.type === 'error') {
+        unbindAbort();
         worker.terminate();
         reject(new Error(message.message || 'Analysis error.'));
       }
     };
 
     worker.onerror = (event: ErrorEvent) => {
+      unbindAbort();
       worker.terminate();
       reject(new Error(event.message || 'Analysis worker error.'));
     };
+
+    throwIfMeasurementAborted(payload.abortSignal);
 
     worker.postMessage(
       {
@@ -119,6 +141,8 @@ export interface RunMeasurementParams {
   inputLabel: string;
   outputLabel: string;
   onStatus: (text: string, progress: number) => void;
+  onAudioFrame?: (frame: MeasurementAudioFrame) => void;
+  abortSignal?: AbortSignal;
   eqApply?: EqApplyProfile;
 }
 
@@ -143,9 +167,13 @@ export async function runMeasurement(
     inputLabel,
     outputLabel,
     onStatus,
+    onAudioFrame,
     eqApply,
+    abortSignal,
   } = params;
   let fMax = params.fMax;
+
+  throwIfMeasurementAborted(abortSignal);
 
   if (!Number.isFinite(fMin) || !Number.isFinite(fMax) || fMin < 10 || fMax <= fMin) {
     throw new Error('Check the sweep frequency range.');
@@ -158,11 +186,17 @@ export async function runMeasurement(
   let micSource: MediaStreamAudioSourceNode | null = null;
   let recorder: AudioWorkletNode | ScriptProcessorNode | null = null;
   let playback: AudioBufferSourceNode | null = null;
+  let visualAnalyser: AnalyserNode | null = null;
+  let visualRafId = 0;
+  let measurementTimer: ReturnType<typeof setInterval> | null = null;
+  let stopRecorder: () => void = () => {};
+  let unbindAbort: (() => void) | null = null;
 
   try {
     stream = await navigator.mediaDevices.getUserMedia(
       createAudioConstraints(inputDeviceId),
     );
+    throwIfMeasurementAborted(abortSignal);
     const track = stream.getAudioTracks()[0];
     const settings = track.getSettings ? track.getSettings() : {};
 
@@ -191,7 +225,6 @@ export async function runMeasurement(
       stoppedResolve = resolve;
     });
     let recorderMode = 'AudioWorklet';
-    let stopRecorder: () => void = () => {};
 
     try {
       if (!context.audioWorklet || typeof AudioWorkletNode === 'undefined') {
@@ -286,47 +319,95 @@ export async function runMeasurement(
 
     playback = context.createBufferSource();
     playback.buffer = makeSweepBuffer(context, sweepData, channel);
+
+    visualAnalyser = context.createAnalyser();
+    visualAnalyser.fftSize = 2048;
+    visualAnalyser.smoothingTimeConstant = 0.55;
+
+    const visualBus = context.createGain();
     if (eqApply) {
-      connectEqChain(context, playback, context.destination, eqApply);
+      connectEqChain(context, playback, visualBus, eqApply);
     } else {
-      playback.connect(context.destination);
+      playback.connect(visualBus);
     }
+    visualBus.connect(visualAnalyser);
+    visualAnalyser.connect(context.destination);
+
+    if (onAudioFrame) {
+      const pumpVisual = () => {
+        if (visualAnalyser) {
+          onAudioFrame(readMeasurementAudioFrame(visualAnalyser));
+        }
+        visualRafId = requestAnimationFrame(pumpVisual);
+      };
+      visualRafId = requestAnimationFrame(pumpVisual);
+    }
+
     playback.start(startTime);
+
+    unbindAbort = bindMeasurementAbort(abortSignal, () => {
+      if (measurementTimer) {
+        clearInterval(measurementTimer);
+        measurementTimer = null;
+      }
+      cancelAnimationFrame(visualRafId);
+      visualRafId = 0;
+      try {
+        playback?.stop();
+      } catch {
+        /* ignore */
+      }
+      stopRecorder();
+    });
 
     const totalSeconds = preRollSeconds + durationSeconds + tailSeconds;
     const measurementStart = performance.now();
 
-    await new Promise<void>((resolve) => {
-      const timer = setInterval(() => {
-        const elapsed = (performance.now() - measurementStart) / 1000;
-        const fraction = Math.min(1, elapsed / totalSeconds);
-        const progress = 8 + fraction * 62;
+    await Promise.race([
+      new Promise<void>((resolve, reject) => {
+        measurementTimer = setInterval(() => {
+          if (abortSignal?.aborted) {
+            if (measurementTimer) clearInterval(measurementTimer);
+            measurementTimer = null;
+            reject(createMeasurementAbortError());
+            return;
+          }
 
-        if (elapsed < preRollSeconds) {
-          onStatus('Room quiet — measuring background noise…', progress);
-        } else if (elapsed < preRollSeconds + durationSeconds) {
-          onStatus(
-            eqApply
-              ? 'Sweep with EQ in progress — keep the microphone still…'
-              : 'Sweep in progress — keep the microphone still…',
-            progress,
-          );
-        } else {
-          onStatus('Recording room decay…', progress);
-        }
+          const elapsed = (performance.now() - measurementStart) / 1000;
+          const fraction = Math.min(1, elapsed / totalSeconds);
+          const progress = 8 + fraction * 62;
 
-        if (fraction >= 1) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 80);
-    });
+          if (elapsed < preRollSeconds) {
+            onStatus('Room quiet — measuring background noise…', progress);
+          } else if (elapsed < preRollSeconds + durationSeconds) {
+            onStatus(
+              eqApply
+                ? 'Sweep with EQ in progress — keep the microphone still…'
+                : 'Sweep in progress — keep the microphone still…',
+              progress,
+            );
+          } else {
+            onStatus('Recording room decay…', progress);
+          }
 
+          if (fraction >= 1) {
+            if (measurementTimer) clearInterval(measurementTimer);
+            measurementTimer = null;
+            resolve();
+          }
+        }, 80);
+      }),
+      waitForAbort(abortSignal),
+    ]);
+
+    throwIfMeasurementAborted(abortSignal);
     stopRecorder();
     await Promise.race([
       stoppedPromise,
       new Promise<void>((resolve) => setTimeout(resolve, 500)),
     ]);
+
+    throwIfMeasurementAborted(abortSignal);
 
     const assembled = assembleChunks(chunks);
     const sweepOffset = sweepStartFrame - assembled.firstFrame;
@@ -360,6 +441,7 @@ export async function runMeasurement(
       smoothing,
       calibration,
       onProgress: onStatus,
+      abortSignal,
     });
 
     const measurementMeta: MeasurementMeta = {
@@ -389,6 +471,12 @@ export async function runMeasurement(
       measurementMeta,
     };
   } finally {
+    unbindAbort?.();
+    if (measurementTimer) {
+      clearInterval(measurementTimer);
+    }
+    cancelAnimationFrame(visualRafId);
+    onAudioFrame?.({ level: 0, centroid: 0.15 });
     try {
       playback?.stop();
     } catch {
@@ -406,6 +494,11 @@ export async function runMeasurement(
     }
     try {
       recorder?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
+      visualAnalyser?.disconnect();
     } catch {
       /* ignore */
     }

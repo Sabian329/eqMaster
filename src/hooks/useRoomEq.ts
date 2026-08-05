@@ -8,6 +8,11 @@ import {
 } from '../audio/devices';
 import { getActiveEqFilters, hasEqToApply } from '../audio/eqChain';
 import { runMeasurement, startLevelTest } from '../audio/measurement';
+import {
+  isMeasurementAbortError,
+  MEASUREMENT_ABORT_MESSAGE,
+} from '../audio/measurementAbort';
+import type { MeasurementAudioFrame } from '../audio/measurementAudioVisual';
 import type {
   ChannelMode,
   ChartSeries,
@@ -25,9 +30,20 @@ import { buildPresetText } from '../utils/preset';
 import { downloadText, safePresetFilename } from '../utils/download';
 import { formatFrequency, meterOptimalRangeLabel } from '../utils/format';
 import { averageCurves } from '../utils/averageCurves';
-import { PRO_MAX_AUTO_BANDS, runAutoEqPipeline } from '../utils/autoEqBridge';
+import { PRO_MAX_AUTO_BANDS } from '../utils/autoEqBridge';
+import { getMockPresetLabel } from '../components/advanced-setup/constants';
+import { runCorrectionPipeline } from '../utils/correctionPipeline';
+import type { EqAlgorithmVersion } from '../config/eqAlgorithms';
+import type { AutoEqProgress, AutoEqPrecision } from '../audio/auto-eq/types';
+import type { AutoEqV3Progress } from '../audio/auto-eq/v3/types';
+import {
+  mapAutoEqV2ResultToPipeline,
+} from '../utils/autoEqBridgeV2';
+import { mapAutoEqV3ResultToPipeline } from '../utils/autoEqBridgeV3';
+import { runAutoEqV2Worker } from '../audio/auto-eq/autoEqWorkerClient';
+import { runAutoEqV3Worker } from '../audio/auto-eq/v3/autoEqV3WorkerClient';
 import { sanitizeCurve } from '../utils/sanitizeCurve';
-import { buildTargetCurve, FLAT_TARGET_LABEL } from '../utils/toneProfile';
+import { buildTargetCurve, FLAT_TARGET_LABEL, ROOM_TARGET_LABEL } from '../utils/toneProfile';
 import { buildCorrectedCurve } from '../utils/correctedCurve';
 import {
   applySuggestionAdjustments,
@@ -187,6 +203,8 @@ export function useRoomEq() {
   const [meterDb, setMeterDb] = useState(-Infinity);
   const levelTestRef = useRef<{ stop: () => Promise<void> } | null>(null);
   const sessionMeterRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  const sessionAudioFrameRef = useRef<MeasurementAudioFrame | null>(null);
+  const sessionMeasurementAbortRef = useRef<AbortController | null>(null);
 
   const [curve, setCurve] = useState<CurvePoint[]>([]);
   const [measurementMeta, setMeasurementMeta] = useState<MeasurementMeta | null>(null);
@@ -204,8 +222,10 @@ export function useRoomEq() {
   const [sessionStep, setSessionStep] = useState<MeasurementSessionStep>('mic-test');
   const [sessionTargetCount, setSessionTargetCount] = useState<MeasurementCount>(1);
   const [sessionRuns, setSessionRuns] = useState<MeasurementRun[]>([]);
+  const [sessionMeasuringRunIndex, setSessionMeasuringRunIndex] = useState<number | null>(null);
   const [sessionMeterActive, setSessionMeterActive] = useState(false);
   const [sessionMeterDb, setSessionMeterDb] = useState(-Infinity);
+  const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
   const [presetName, setPresetName] = useState('Room EQ');
   const [presetPreamp, setPresetPreamp] = useState(0);
@@ -218,6 +238,20 @@ export function useRoomEq() {
     Record<string, boolean>
   >({});
   const [customSuggestions, setCustomSuggestions] = useState<Suggestion[]>([]);
+  const [eqAlgorithmVersion, setEqAlgorithmVersion] = useState<EqAlgorithmVersion>('v1');
+  const [autoEqV2Progress, setAutoEqV2Progress] = useState<AutoEqProgress | null>(null);
+  const [autoEqV2Result, setAutoEqV2Result] = useState<
+    ReturnType<typeof mapAutoEqV2ResultToPipeline> | null
+  >(null);
+  const [autoEqV3Progress, setAutoEqV3Progress] = useState<AutoEqV3Progress | null>(null);
+  const [autoEqV3Result, setAutoEqV3Result] = useState<
+    ReturnType<typeof mapAutoEqV3ResultToPipeline> | null
+  >(null);
+  const [v2RunTrigger, setV2RunTrigger] = useState<{
+    nonce: number;
+    precision: AutoEqPrecision;
+  }>({ nonce: 0, precision: 'standard' });
+  const [v3RunTrigger, setV3RunTrigger] = useState(0);
   const [eqShapePreset, setEqShapePreset] = useState<EqShapePresetId | null>(null);
   const [sosOverlayEnabled, setSosOverlayEnabled] = useState(false);
   const sosOverlayEnabledRef = useRef(false);
@@ -325,13 +359,31 @@ export function useRoomEq() {
 
   const targetCurve = useMemo(() => {
     if (!curve.length) return [];
+    if (eqAlgorithmVersion === 'v3' && autoEqV3Result?.target?.length) {
+      return autoEqV3Result.target;
+    }
+    if (eqAlgorithmVersion === 'v2' && autoEqV2Result?.target?.length) {
+      return autoEqV2Result.target;
+    }
     return buildTargetCurve(curve);
-  }, [curve]);
+  }, [curve, eqAlgorithmVersion, autoEqV2Result, autoEqV3Result]);
 
-  const autoEq = useMemo(() => {
-    if (!curve.length) return null;
+  const targetSeriesLabel = useMemo(() => {
+    if (eqAlgorithmVersion === 'v3' && autoEqV3Result?.v3) {
+      if (autoEqV3Result.v3.targetType === 'room') return ROOM_TARGET_LABEL;
+      if (autoEqV3Result.v3.targetType === 'flat') return FLAT_TARGET_LABEL;
+      return 'Custom target';
+    }
+    if (eqAlgorithmVersion === 'v2' && autoEqV2Result?.v2) {
+      return ROOM_TARGET_LABEL;
+    }
+    return FLAT_TARGET_LABEL;
+  }, [eqAlgorithmVersion, autoEqV2Result, autoEqV3Result]);
+
+  const autoEqV1 = useMemo(() => {
+    if (!curve.length || eqAlgorithmVersion !== 'v1') return null;
     try {
-      return runAutoEqPipeline(curve, {
+      return runCorrectionPipeline('v1', curve, {
         sampleRate: measurementMeta?.sampleRate,
         fStart,
         fEnd,
@@ -343,10 +395,165 @@ export function useRoomEq() {
     }
   }, [
     curve,
+    eqAlgorithmVersion,
     measurementMeta?.sampleRate,
     fStart,
     fEnd,
   ]);
+
+  useEffect(() => {
+    if (eqAlgorithmVersion !== 'v2' || !curve.length) return;
+    setV2RunTrigger((previous) => ({
+      nonce: previous.nonce + 1,
+      precision: 'standard',
+    }));
+  }, [
+    curve,
+    eqAlgorithmVersion,
+    measurementRuns,
+    measurementMeta?.sampleRate,
+    fStart,
+    fEnd,
+  ]);
+
+  useEffect(() => {
+    if (eqAlgorithmVersion !== 'v2' || !curve.length) {
+      setAutoEqV2Result(null);
+      setAutoEqV2Progress(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const measurements =
+      measurementRuns.length > 0
+        ? measurementRuns.map((run) => run.curve)
+        : [curve];
+
+    setAutoEqV2Progress({ stage: 'preparing', progress: 0 });
+
+    runAutoEqV2Worker({
+      measurements,
+      options: {
+        sampleRate: measurementMeta?.sampleRate ?? 48_000,
+        minFrequency: Math.max(20, fStart),
+        maxFrequency: fEnd,
+        maxFilters: PRO_MAX_AUTO_BANDS,
+        targetType: 'room',
+        allowBoosts: true,
+        fullRangeCorrection: true,
+        precision: v2RunTrigger.precision,
+      },
+      onProgress: setAutoEqV2Progress,
+      signal: controller.signal,
+    })
+      .then((result) => {
+        setAutoEqV2Result(mapAutoEqV2ResultToPipeline(result));
+        setAutoEqV2Progress(null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setAutoEqV2Result(null);
+          setAutoEqV2Progress(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    v2RunTrigger,
+    eqAlgorithmVersion,
+    curve,
+    measurementMeta?.sampleRate,
+    measurementRuns,
+    fStart,
+    fEnd,
+  ]);
+
+  const recalculateV2AutoEq = useCallback(() => {
+    setV2RunTrigger((previous) => ({
+      nonce: previous.nonce + 1,
+      precision: 'high',
+    }));
+  }, []);
+
+  const autoEqV2IsRunning = autoEqV2Progress !== null;
+  const autoEqV2LastPrecision = v2RunTrigger.precision;
+
+  useEffect(() => {
+    if (eqAlgorithmVersion !== 'v3' || !curve.length) return;
+    setV3RunTrigger((previous) => previous + 1);
+  }, [
+    curve,
+    eqAlgorithmVersion,
+    measurementRuns,
+    measurementMeta?.sampleRate,
+    fStart,
+    fEnd,
+  ]);
+
+  useEffect(() => {
+    if (eqAlgorithmVersion !== 'v3' || !curve.length) {
+      setAutoEqV3Result(null);
+      setAutoEqV3Progress(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const measurements =
+      measurementRuns.length > 0
+        ? measurementRuns.map((run) => run.curve)
+        : [curve];
+
+    setAutoEqV3Progress({ stage: 'preparing', progress: 0 });
+
+    runAutoEqV3Worker({
+      measurements,
+      options: {
+        sampleRate: measurementMeta?.sampleRate ?? 48_000,
+        minFrequency: Math.max(20, fStart),
+        maxFrequency: fEnd,
+        maxFilters: PRO_MAX_AUTO_BANDS,
+        targetType: 'room',
+        allowBoosts: true,
+        fullRangeCorrection: true,
+        seed: 42,
+      },
+      onProgress: setAutoEqV3Progress,
+      signal: controller.signal,
+    })
+      .then((result) => {
+        setAutoEqV3Result(mapAutoEqV3ResultToPipeline(result));
+        setAutoEqV3Progress(null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setAutoEqV3Result(null);
+          setAutoEqV3Progress(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    v3RunTrigger,
+    eqAlgorithmVersion,
+    curve,
+    measurementMeta?.sampleRate,
+    measurementRuns,
+    fStart,
+    fEnd,
+  ]);
+
+  const recalculateV3AutoEq = useCallback(() => {
+    setV3RunTrigger((previous) => previous + 1);
+  }, []);
+
+  const autoEqV3IsRunning = autoEqV3Progress !== null;
+
+  const autoEq =
+    eqAlgorithmVersion === 'v3'
+      ? autoEqV3Result
+      : eqAlgorithmVersion === 'v2'
+        ? autoEqV2Result
+        : autoEqV1;
 
   useEffect(() => {
     if (autoEq) {
@@ -609,7 +816,7 @@ export function useRoomEq() {
     if (targetCurve.length) {
       overlays.push({
         id: 'target',
-        label: FLAT_TARGET_LABEL,
+        label: targetSeriesLabel,
         curve: targetCurve,
         color: '#f0f2f5',
         lineWidth: 1.6,
@@ -648,6 +855,7 @@ export function useRoomEq() {
     correctedCurve,
     verificationCurve,
     FLAT_TARGET_LABEL,
+    targetSeriesLabel,
   ]);
 
   const isChartSeriesVisible = useCallback(
@@ -697,7 +905,11 @@ export function useRoomEq() {
   }, [inputs, outputs, inputDeviceId, outputDeviceId, selectedOutputDevice]);
 
   const executeMeasurement = useCallback(
-    async (onStatus: (text: string, progress: number) => void) => {
+    async (
+      onStatus: (text: string, progress: number) => void,
+      onAudioFrame?: (frame: MeasurementAudioFrame) => void,
+      abortSignal?: AbortSignal,
+    ) => {
       const { inputLabel, outputLabel } = getDeviceLabels();
       return runMeasurement({
         inputDeviceId,
@@ -712,6 +924,8 @@ export function useRoomEq() {
         inputLabel,
         outputLabel,
         onStatus,
+        onAudioFrame,
+        abortSignal,
       });
     },
     [
@@ -778,6 +992,7 @@ export function useRoomEq() {
           levelDb: SWEEP_LEVEL_DB,
           channel,
           runIndex,
+          presetId,
           seedSalt: seedSalt + presetId * 47 + runIndex * 3,
           inputLabel,
           outputLabel,
@@ -797,7 +1012,7 @@ export function useRoomEq() {
 
       return {
         id: presetId,
-        label: `Mock ${presetId}`,
+        label: getMockPresetLabel(presetId),
         runs,
       };
     },
@@ -840,9 +1055,16 @@ export function useRoomEq() {
 
   useEffect(() => {
     if (setupMode !== 'test' || sessionOpen || running) return;
-    if (mockPresets.length > 0) return;
-    regenerateMockLibrary(1);
-  }, [setupMode, sessionOpen, running, mockPresets.length, regenerateMockLibrary]);
+    if (mockPresets.length >= MOCK_PRESET_COUNT) return;
+    regenerateMockLibrary(selectedMockPresetId);
+  }, [
+    setupMode,
+    sessionOpen,
+    running,
+    mockPresets.length,
+    regenerateMockLibrary,
+    selectedMockPresetId,
+  ]);
 
   const stopSessionMeter = useCallback(async () => {
     await sessionMeterRef.current?.stop();
@@ -948,6 +1170,7 @@ export function useRoomEq() {
     setSessionTargetCount(measurementCount);
     setSessionRuns([]);
     setSessionMeterDb(-Infinity);
+    setSessionWarning(null);
     setStatus(
       isTestMode ? 'Test session started — mock data only' : 'Measurement session started',
       0,
@@ -956,31 +1179,69 @@ export function useRoomEq() {
 
   const handleSessionSkipMicTest = () => {
     void stopSessionMeter();
+    setSessionWarning(null);
     setSessionStep('ready');
   };
 
-  const handleSessionStartMeter = async () => {
-    await sessionMeterRef.current?.stop();
-    const session = await startLevelTest(inputDeviceId, outputDeviceId, setSessionMeterDb, {
-      levelDb: SWEEP_LEVEL_DB,
-      channel,
-    });
-    sessionMeterRef.current = session;
-    setSessionMeterActive(true);
+  const handleSessionDismissWarning = () => {
+    setSessionWarning(null);
   };
+
+  const handleSessionStartMeter = async () => {
+    setSessionWarning(null);
+    try {
+      await sessionMeterRef.current?.stop();
+      const session = await startLevelTest(inputDeviceId, outputDeviceId, setSessionMeterDb, {
+        levelDb: SWEEP_LEVEL_DB,
+        channel,
+      });
+      sessionMeterRef.current = session;
+      setSessionMeterActive(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSessionWarning(message);
+      throw error;
+    }
+  };
+
 
   const handleSessionStopMeter = async () => {
     await stopSessionMeter();
   };
 
-  const handleSessionRunMeasurement = async () => {
+  const getSessionAudioFrame = useCallback(
+    () => sessionAudioFrameRef.current,
+    [],
+  );
+
+  const handleSessionRunMeasurement = async (replaceRunIndex?: number) => {
     if (running) return;
     await stopSessionMeter();
+    setSessionWarning(null);
+    sessionAudioFrameRef.current = null;
+    sessionMeasurementAbortRef.current?.abort();
+    sessionMeasurementAbortRef.current = new AbortController();
+    const abortSignal = sessionMeasurementAbortRef.current.signal;
+    const replacingRunIndex =
+      replaceRunIndex !== undefined && replaceRunIndex > 0 ? replaceRunIndex : null;
+    const runIndex = replacingRunIndex ?? sessionRuns.length + 1;
+    setSessionMeasuringRunIndex(runIndex);
     setRunning(true);
     setSessionStep('measuring');
 
+    const onAudioFrame = (frame: MeasurementAudioFrame) => {
+      sessionAudioFrameRef.current = frame;
+    };
+
+    const restoreStepAfterFailure = () => {
+      if (replacingRunIndex && sessionRuns.length > 0) {
+        setSessionStep('run-complete');
+        return;
+      }
+      setSessionStep('ready');
+    };
+
     try {
-      const runIndex = sessionRuns.length + 1;
       const { inputLabel, outputLabel } = getDeviceLabels();
       const result = isTestMode
         ? await runMockMeasurement(
@@ -996,8 +1257,10 @@ export function useRoomEq() {
               outputLabel,
             },
             setStatus,
+            onAudioFrame,
+            abortSignal,
           )
-        : await executeMeasurement(setStatus);
+        : await executeMeasurement(setStatus, onAudioFrame, abortSignal);
       const run: MeasurementRun = {
         index: runIndex,
         label: isTestMode ? `Mock ${runIndex}` : `Run ${runIndex}`,
@@ -1006,25 +1269,55 @@ export function useRoomEq() {
         meta: result.measurementMeta,
       };
 
-      setSessionRuns((previous) => [...previous, run]);
+      if (replacingRunIndex) {
+        setSessionRuns((previous) => {
+          const next = [...previous];
+          next[replacingRunIndex - 1] = run;
+          return next;
+        });
+      } else {
+        setSessionRuns((previous) => [...previous, run]);
+      }
       setSessionStep('run-complete');
       setStatus(
-        isTestMode
-          ? `Mock measurement ${runIndex} complete`
-          : `Measurement ${runIndex} complete`,
+        replacingRunIndex
+          ? isTestMode
+            ? `Mock measurement ${runIndex} replaced`
+            : `Measurement ${runIndex} replaced`
+          : isTestMode
+            ? `Mock measurement ${runIndex} complete`
+            : `Measurement ${runIndex} complete`,
         100,
       );
     } catch (error) {
+      if (isMeasurementAbortError(error)) {
+        setStatus('Measurement stopped', 0);
+        setSessionWarning(MEASUREMENT_ABORT_MESSAGE);
+        restoreStepAfterFailure();
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       setStatus(message, 0);
-      setSessionStep('ready');
-      alert(message);
+      setSessionWarning(message);
+      restoreStepAfterFailure();
     } finally {
+      sessionMeasurementAbortRef.current = null;
+      sessionAudioFrameRef.current = null;
+      setSessionMeasuringRunIndex(null);
       setRunning(false);
     }
   };
 
+  const handleSessionRedoMeasurement = (runIndex: number) => {
+    void handleSessionRunMeasurement(runIndex);
+  };
+
+  const handleSessionStopMeasurement = () => {
+    sessionMeasurementAbortRef.current?.abort();
+  };
+
   const handleSessionContinue = () => {
+    setSessionWarning(null);
     setSessionStep('ready');
     setStatus(`Ready for measurement ${sessionRuns.length + 1}`, 0);
   };
@@ -1036,6 +1329,7 @@ export function useRoomEq() {
     setSessionOpen(false);
     setSessionStep('mic-test');
     setSessionRuns([]);
+    setSessionWarning(null);
   };
 
   const handleSessionCancel = async () => {
@@ -1052,6 +1346,7 @@ export function useRoomEq() {
     setSessionOpen(false);
     setSessionStep('mic-test');
     setSessionRuns([]);
+    setSessionWarning(null);
     setStatus('Ready', 0);
   };
 
@@ -1252,6 +1547,17 @@ export function useRoomEq() {
     isMockMeasurement: measurementMeta?.recorderMode === 'mock',
     curve,
     suggestions,
+    eqAlgorithmVersion,
+    setEqAlgorithmVersion,
+    autoEqV2Progress,
+    recalculateV2AutoEq,
+    autoEqV2IsRunning,
+    autoEqV2LastPrecision,
+    autoEqV3Progress,
+    autoEqV3Result,
+    recalculateV3AutoEq,
+    autoEqV3IsRunning,
+    targetSeriesLabel,
     globalBandQ,
     setSuggestionQ,
     setSuggestionGain,
@@ -1288,8 +1594,11 @@ export function useRoomEq() {
     sessionStep,
     sessionTargetCount,
     sessionRuns,
+    sessionMeasuringRunIndex,
     sessionMeterActive,
     sessionMeterDb,
+    sessionWarning,
+    getSessionAudioFrame,
     presetName,
     setPresetName,
     presetPreamp,
@@ -1307,9 +1616,12 @@ export function useRoomEq() {
     handleSessionStartMeter,
     handleSessionStopMeter,
     handleSessionRunMeasurement,
+    handleSessionRedoMeasurement,
+    handleSessionStopMeasurement,
     handleSessionContinue,
     handleSessionFinish,
     handleSessionCancel,
+    handleSessionDismissWarning,
     exportCsv,
     exportJson,
     copyPreset,

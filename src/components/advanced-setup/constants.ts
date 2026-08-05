@@ -20,7 +20,34 @@ export const MEASUREMENT_COUNT_OPTIONS: { value: MeasurementCount; label: string
 ];
 
 /** Number of pre-generated mock presets available in Test tab. */
-export const MOCK_PRESET_COUNT = 6;
+export const MOCK_PRESET_COUNT = 9;
+
+/** Short labels for mock library buttons (presets 6–9 are resonance stress tests). */
+export const MOCK_PRESET_LABELS: Record<number, string> = {
+  6: 'Mock 6 · dense',
+  7: 'Mock 7 · 130 Hz',
+  8: 'Mock 8 · mid',
+  9: 'Mock 9 · full',
+};
+
+export function getMockPresetLabel(presetId: number): string {
+  return MOCK_PRESET_LABELS[presetId] ?? `Mock ${presetId}`;
+}
+
+export function getMockPresetDescription(presetId: number): string | undefined {
+  switch (presetId) {
+    case 6:
+      return 'Many narrow peaks 20 Hz–10 kHz';
+    case 7:
+      return 'Strong 130 Hz cluster + mid + soprano';
+    case 8:
+      return 'Variant B — shifted mid & treble resonances';
+    case 9:
+      return 'Max stress — all zones at once';
+    default:
+      return undefined;
+  }
+}
 
 export const CHANNEL_OPTIONS = [
   { value: 'both', label: 'L + R (stereo)' },

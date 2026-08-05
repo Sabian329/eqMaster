@@ -1,8 +1,11 @@
-import { Dialog, Stack } from '@chakra-ui/react';
+import { Box, Dialog, Stack } from '@chakra-ui/react';
+import { modalStyles } from '../../theme';
 import { MeasurementProgress } from '../shared';
+import { SessionWarningBanner } from './SessionWarningBanner';
 import { CompletedRunsList } from './CompletedRunsList';
 import { SessionFooter } from './SessionFooter';
 import { SessionHeader } from './SessionHeader';
+import { MeasurementAuroraPanel } from './MeasurementAuroraPanel';
 import { MicTestStep } from './steps/MicTestStep';
 import { SessionStepContent } from './steps/SessionStepContent';
 import type { MeasurementSessionModalProps } from './types';
@@ -15,22 +18,30 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
     sessionRuns,
     sessionMeterActive,
     sessionMeterDb,
+    sessionWarning,
     running,
     statusText,
     progress,
     isTestMode,
+    getSessionAudioFrame,
     handleSessionSkipMicTest,
     handleSessionStartMeter,
     handleSessionStopMeter,
     handleSessionRunMeasurement,
+    handleSessionRedoMeasurement,
+    handleSessionStopMeasurement,
     handleSessionContinue,
     handleSessionFinish,
     handleSessionCancel,
+    handleSessionDismissWarning,
   } = state;
 
   const nextRunNumber = sessionRuns.length + 1;
   const canFinish = sessionRuns.length > 0;
   const allRunsDone = sessionRuns.length >= sessionTargetCount;
+  const lastCompletedRunNumber = sessionRuns.length;
+
+  const showProgress = sessionStep === 'measuring' || sessionStep === 'run-complete';
 
   return (
     <Dialog.Root
@@ -40,62 +51,74 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
       }}
       closeOnInteractOutside={sessionStep !== 'measuring'}
       closeOnEscape={sessionStep !== 'measuring'}
+      placement="center"
     >
-      <Dialog.Backdrop bg="blackAlpha.700" />
-      <Dialog.Positioner p={4}>
-        <Dialog.Content
-          maxW="520px"
-          w="full"
-          bg="surface.raised"
-          borderWidth="1px"
-          borderColor="whiteAlpha.200"
-          borderRadius="2xl"
-          color="gray.100"
-          shadow="2xl"
-        >
+      <Dialog.Backdrop {...modalStyles.backdrop} />
+      <Dialog.Positioner {...modalStyles.positioner}>
+        <Dialog.Content {...modalStyles.content}>
           <SessionHeader state={state} />
 
-          <Dialog.Body py={5}>
-            <Stack gap={5}>
-              {sessionStep === 'mic-test' && (
-                <MicTestStep
-                  sessionMeterActive={sessionMeterActive}
-                  sessionMeterDb={sessionMeterDb}
-                  onStartMeter={handleSessionStartMeter}
-                  onStopMeter={handleSessionStopMeter}
+          <Dialog.Body {...modalStyles.bodyScroll}>
+            <Stack gap={4} h="full">
+              {sessionWarning && (
+                <SessionWarningBanner
+                  message={sessionWarning}
+                  onDismiss={handleSessionDismissWarning}
                 />
               )}
 
-              <SessionStepContent
-                sessionStep={sessionStep}
-                isTestMode={isTestMode}
-                allRunsDone={allRunsDone}
+              <MeasurementAuroraPanel
+                active={sessionStep === 'measuring'}
+                getAudioFrame={getSessionAudioFrame}
               />
 
-              {(sessionStep === 'measuring' || sessionStep === 'run-complete') && (
-                <MeasurementProgress statusText={statusText} progress={progress} />
-              )}
+              <Box {...modalStyles.bodyInner}>
+                <Stack gap={4}>
+                  {sessionStep === 'mic-test' && (
+                    <MicTestStep
+                      sessionMeterActive={sessionMeterActive}
+                      sessionMeterDb={sessionMeterDb}
+                      onStartMeter={handleSessionStartMeter}
+                      onStopMeter={handleSessionStopMeter}
+                    />
+                  )}
 
-              <CompletedRunsList sessionRuns={sessionRuns} />
+                  <SessionStepContent
+                    sessionStep={sessionStep}
+                    isTestMode={isTestMode}
+                    allRunsDone={allRunsDone}
+                  />
+
+                  <Box minH="52px">
+                    {showProgress && (
+                      <MeasurementProgress statusText={statusText} progress={progress} />
+                    )}
+                  </Box>
+
+                  <CompletedRunsList
+                    sessionRuns={sessionRuns}
+                    sessionStep={sessionStep}
+                    running={running}
+                    onRedoRun={handleSessionRedoMeasurement}
+                  />
+                </Stack>
+              </Box>
             </Stack>
           </Dialog.Body>
 
-          <Dialog.Footer
-            borderTopWidth="1px"
-            borderColor="whiteAlpha.100"
-            pt={4}
-            gap={2}
-            flexWrap="wrap"
-          >
+          <Dialog.Footer {...modalStyles.footer}>
             <SessionFooter
               sessionStep={sessionStep}
               running={running}
               canFinish={canFinish}
               allRunsDone={allRunsDone}
               nextRunNumber={nextRunNumber}
+              lastCompletedRunNumber={lastCompletedRunNumber}
               isTestMode={isTestMode}
               onSkipMicTest={handleSessionSkipMicTest}
-              onRunMeasurement={handleSessionRunMeasurement}
+              onRunMeasurement={() => void handleSessionRunMeasurement()}
+              onStopMeasurement={handleSessionStopMeasurement}
+              onRedoMeasurement={handleSessionRedoMeasurement}
               onContinue={handleSessionContinue}
               onFinish={handleSessionFinish}
               onCancel={handleSessionCancel}

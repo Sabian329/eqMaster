@@ -1,4 +1,13 @@
 import type { ChannelMode, CurvePoint, MeasurementMeta, Suggestion } from '../types';
+import {
+  createMockMeasurementAudioFrame,
+  type MeasurementAudioFrame,
+} from '../audio/measurementAudioVisual';
+import {
+  createMeasurementAbortError,
+  throwIfMeasurementAborted,
+  waitForAbort,
+} from '../audio/measurementAbort';
 import { buildCorrectedCurve } from './correctedCurve';
 import { sanitizeCurve } from './sanitizeCurve';
 
@@ -11,6 +20,8 @@ export interface MockMeasurementOptions {
   channel: ChannelMode;
   runIndex: number;
   seedSalt?: number;
+  /** Library preset id — presets 6–9 use fixed resonance stress-test profiles. */
+  presetId?: number;
   inputLabel?: string;
   outputLabel?: string;
 }
@@ -122,6 +133,318 @@ function buildMockFeatures(
   return features;
 }
 
+type ResonantPresetId = 6 | 7 | 8 | 9;
+
+type PeakDef = [frequency: number, db: number, width: number];
+
+function isResonantPreset(presetId?: number): presetId is ResonantPresetId {
+  return presetId === 6 || presetId === 7 || presetId === 8 || presetId === 9;
+}
+
+function pushPeaks(
+  features: MockFeature[],
+  peaks: PeakDef[],
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+  runShiftScale = 1,
+): void {
+  const runShift = (runIndex - 1) * 0.012 * runShiftScale;
+  const amplitudeScale = 1 - (runIndex - 1) * 0.035;
+
+  for (const [frequency, db, width] of peaks) {
+    if (frequency < fMin * 0.9 || frequency > fMax * 1.05) continue;
+    const runDetune = 2 ** (runShift * (frequency < 500 ? 1.15 : 0.55));
+    features.push({
+      frequency: frequency * runDetune,
+      db: db * amplitudeScale,
+      width,
+    });
+  }
+}
+
+function pushNulls(
+  features: MockFeature[],
+  nulls: PeakDef[],
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): void {
+  const runShift = (runIndex - 1) * 0.012;
+  for (const [frequency, db, width] of nulls) {
+    if (frequency < fMin * 0.9 || frequency > fMax * 1.05) continue;
+    features.push({
+      frequency: frequency * 2 ** runShift,
+      db: db * (1 + runShift * 0.08),
+      width,
+    });
+  }
+}
+
+/** Mock 6 — dense comb across the band (incl. strengthened 130 Hz). */
+function buildDenseResonantFeatures(
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): MockFeature[] {
+  const features: MockFeature[] = [];
+  const peaks: PeakDef[] = [
+    [45, 8.5, 0.022],
+    [52, 6.8, 0.02],
+    [61, 9.2, 0.024],
+    [73, 7.4, 0.023],
+    [88, 5.8, 0.026],
+    [105, 6.2, 0.025],
+    [122, 9.5, 0.021],
+    [130, 11.2, 0.019],
+    [138, 8.8, 0.021],
+    [155, 7.1, 0.024],
+    [178, 5.4, 0.027],
+    [210, 4.2, 0.03],
+    [245, 5.6, 0.028],
+    [290, 3.8, 0.032],
+    [340, 6.1, 0.029],
+    [410, 4.4, 0.034],
+    [520, 5.2, 0.031],
+    [640, 3.6, 0.036],
+    [750, 4.7, 0.033],
+    [920, 3.7, 0.035],
+    [1150, 4.1, 0.038],
+    [1450, 3.2, 0.04],
+    [1850, 5.3, 0.036],
+    [2300, 4.6, 0.039],
+    [2900, 3.5, 0.042],
+    [3600, 4.2, 0.041],
+    [4200, 3.1, 0.044],
+    [5500, 2.8, 0.046],
+    [6800, 3.2, 0.048],
+    [8200, 2.4, 0.05],
+    [10500, 2.9, 0.052],
+  ];
+  pushPeaks(features, peaks, fMin, fMax, runIndex);
+  pushNulls(
+    features,
+    [
+      [192, -8.5, 0.02],
+      [880, -5.2, 0.025],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  return features;
+}
+
+/** Mock 7 — heavy 130 Hz wall + strong mids + soprano peaks. */
+function build130MidSopranoFeatures(
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): MockFeature[] {
+  const features: MockFeature[] = [];
+  pushPeaks(
+    features,
+    [
+      [118, 10.2, 0.018],
+      [125, 11.5, 0.017],
+      [130, 12.8, 0.016],
+      [136, 11.0, 0.017],
+      [143, 9.4, 0.019],
+      [152, 7.2, 0.02],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+    1.2,
+  );
+  pushPeaks(
+    features,
+    [
+      [680, 7.8, 0.028],
+      [920, 8.4, 0.026],
+      [1180, 7.2, 0.027],
+      [1550, 6.8, 0.029],
+      [2100, 6.2, 0.031],
+      [2650, 5.4, 0.033],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  pushPeaks(
+    features,
+    [
+      [6200, 5.8, 0.038],
+      [7800, 6.4, 0.04],
+      [9500, 5.6, 0.042],
+      [11500, 5.2, 0.044],
+      [14000, 4.6, 0.046],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  pushNulls(features, [[198, -7.5, 0.019]], fMin, fMax, runIndex);
+  return features;
+}
+
+/** Mock 8 — variant B: shifted mid/treble clusters, 130 Hz still dominant. */
+function build130MidSopranoVariantB(
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): MockFeature[] {
+  const features: MockFeature[] = [];
+  pushPeaks(
+    features,
+    [
+      [127, 11.8, 0.017],
+      [132, 13.2, 0.015],
+      [139, 10.6, 0.018],
+      [148, 8.0, 0.02],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+    1.35,
+  );
+  pushPeaks(
+    features,
+    [
+      [540, 8.2, 0.03],
+      [760, 7.6, 0.028],
+      [1020, 8.8, 0.026],
+      [1680, 7.4, 0.03],
+      [2450, 6.6, 0.032],
+      [3100, 5.8, 0.034],
+      [3800, 5.0, 0.036],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  pushPeaks(
+    features,
+    [
+      [5800, 6.2, 0.039],
+      [7200, 7.0, 0.041],
+      [8800, 6.6, 0.043],
+      [10800, 5.8, 0.045],
+      [13200, 5.4, 0.047],
+      [16500, 4.8, 0.05],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  pushNulls(
+    features,
+    [
+      [890, -6.8, 0.022],
+      [4200, -5.5, 0.028],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  return features;
+}
+
+/** Mock 9 — max stress: all zones simultaneously, highest peak density. */
+function build130MidSopranoMaxStress(
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): MockFeature[] {
+  const features: MockFeature[] = [];
+  pushPeaks(
+    features,
+    [
+      [121, 11.0, 0.017],
+      [130, 13.8, 0.014],
+      [140, 12.2, 0.016],
+      [165, 8.5, 0.02],
+      [195, 6.8, 0.022],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+    1.5,
+  );
+  pushPeaks(
+    features,
+    [
+      [450, 9.0, 0.028],
+      [650, 8.6, 0.027],
+      [850, 9.2, 0.026],
+      [1100, 8.8, 0.025],
+      [1350, 7.8, 0.027],
+      [1750, 7.2, 0.029],
+      [2200, 6.8, 0.03],
+      [2800, 6.2, 0.032],
+      [3500, 5.6, 0.034],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  pushPeaks(
+    features,
+    [
+      [5000, 6.8, 0.037],
+      [6500, 7.4, 0.039],
+      [8000, 7.8, 0.041],
+      [10000, 7.2, 0.043],
+      [12500, 6.6, 0.045],
+      [15000, 6.0, 0.047],
+      [18000, 5.2, 0.05],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  pushNulls(
+    features,
+    [
+      [188, -9.0, 0.018],
+      [740, -6.2, 0.024],
+      [9600, -4.8, 0.035],
+    ],
+    fMin,
+    fMax,
+    runIndex,
+  );
+  return features;
+}
+
+function buildResonantMockFeatures(
+  presetId: ResonantPresetId,
+  fMin: number,
+  fMax: number,
+  runIndex: number,
+): MockFeature[] {
+  switch (presetId) {
+    case 7:
+      return build130MidSopranoFeatures(fMin, fMax, runIndex);
+    case 8:
+      return build130MidSopranoVariantB(fMin, fMax, runIndex);
+    case 9:
+      return build130MidSopranoMaxStress(fMin, fMax, runIndex);
+    case 6:
+    default:
+      return buildDenseResonantFeatures(fMin, fMax, runIndex);
+  }
+}
+
+/** Flatter baseline so resonances read clearly on Mock 6. */
+function buildResonantRoomEnvelope(frequency: number, runIndex: number): number {
+  const runTilt = (runIndex - 1) * 0.2;
+  let db = 0;
+  db += gaussianBump(frequency, 80, 0.55, 1.2);
+  db -= gaussianBump(frequency, 12_000, 0.4, 1.8 + runTilt * 0.1);
+  return db;
+}
+
 /** Gentle 1/N-oct smoothing to mimic analyzed curve (not a perfect comb). */
 function smoothMockCurve(points: CurvePoint[], fraction: number): CurvePoint[] {
   if (fraction <= 0) return points.map((point) => ({ ...point }));
@@ -157,19 +480,29 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
     0x51ed_2701 + options.runIndex * 13_131 + seedSalt * 9_973,
   );
   const runShift = (options.runIndex - 1) * 0.22;
-  const mockFeatures = buildMockFeatures(
-    options.fMin,
-    usableMax,
-    options.runIndex,
-    seedSalt,
-  );
+  const resonantPreset = isResonantPreset(options.presetId) ? options.presetId : null;
+  const mockFeatures = resonantPreset
+    ? buildResonantMockFeatures(
+        resonantPreset,
+        options.fMin,
+        usableMax,
+        options.runIndex,
+      )
+    : buildMockFeatures(
+        options.fMin,
+        usableMax,
+        options.runIndex,
+        seedSalt,
+      );
   const raw: CurvePoint[] = [];
 
   for (let index = 0; index < pointCount; index += 1) {
     const ratio = index / (pointCount - 1);
     const frequency = options.fMin * Math.pow(usableMax / options.fMin, ratio);
 
-    let db = buildRoomEnvelope(frequency, options.runIndex);
+    let db = resonantPreset
+      ? buildResonantRoomEnvelope(frequency, options.runIndex)
+      : buildRoomEnvelope(frequency, options.runIndex);
 
     for (const feature of mockFeatures) {
       if (feature.frequency < options.fMin * 0.85 || feature.frequency > usableMax * 1.08) {
@@ -187,12 +520,13 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
       );
     }
 
-    const ripple =
-      Math.sin(Math.log2(frequency / 90) * 5.1 + options.runIndex) * 0.35 +
-      Math.sin(Math.log2(frequency / 220) * 2.7 + options.runIndex * 1.3) * 0.55;
+    const ripple = resonantPreset
+      ? Math.sin(Math.log2(frequency / 120) * 3.2 + options.runIndex) * 0.15
+      : Math.sin(Math.log2(frequency / 90) * 5.1 + options.runIndex) * 0.35 +
+        Math.sin(Math.log2(frequency / 220) * 2.7 + options.runIndex * 1.3) * 0.55;
 
     db += ripple;
-    db += (rng() - 0.5) * 0.45;
+    db += (rng() - 0.5) * (resonantPreset ? 0.28 : 0.45);
 
     raw.push({
       frequency,
@@ -215,7 +549,9 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
     db: point.db - normalization,
   }));
 
-  const smoothFraction = Math.max(6, options.smoothing);
+  const smoothFraction = resonantPreset
+    ? Math.max(12, options.smoothing)
+    : Math.max(6, options.smoothing);
   const smoothed = smoothMockCurve(normalized, smoothFraction);
 
   return sanitizeCurve(smoothed);
@@ -258,20 +594,69 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+async function runMockPhase(
+  ms: number,
+  phase: 'quiet' | 'sweep' | 'decay',
+  onAudioFrame?: (frame: MeasurementAudioFrame) => void,
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  throwIfMeasurementAborted(abortSignal);
+
+  if (!onAudioFrame) {
+    await Promise.race([
+      delay(ms),
+      waitForAbort(abortSignal),
+    ]);
+    return;
+  }
+
+  const started = performance.now();
+  await Promise.race([
+    new Promise<void>((resolve, reject) => {
+      const tick = () => {
+        const elapsed = performance.now() - started;
+        const t = Math.min(1, elapsed / ms);
+        onAudioFrame(createMockMeasurementAudioFrame(phase, t));
+        if (elapsed >= ms) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+
+      abortSignal?.addEventListener(
+        'abort',
+        () => {
+          reject(createMeasurementAbortError());
+        },
+        { once: true },
+      );
+    }),
+    waitForAbort(abortSignal),
+  ]);
+
+  throwIfMeasurementAborted(abortSignal);
+}
+
 export async function runMockMeasurement(
   options: MockMeasurementOptions,
   onStatus: (text: string, progress: number) => void,
+  onAudioFrame?: (frame: MeasurementAudioFrame) => void,
+  abortSignal?: AbortSignal,
 ): Promise<{
   curve: CurvePoint[];
   suggestions: Suggestion[];
   measurementMeta: MeasurementMeta;
 }> {
   onStatus(`Mock sweep ${options.runIndex} — preparing…`, 8);
-  await delay(250);
+  await runMockPhase(250, 'quiet', onAudioFrame, abortSignal);
   onStatus(`Mock sweep ${options.runIndex} — playing (simulated)…`, 28);
-  await delay(350);
+  await runMockPhase(Math.max(900, options.durationSeconds * 120), 'sweep', onAudioFrame, abortSignal);
   onStatus(`Mock sweep ${options.runIndex} — analyzing…`, 72);
-  await delay(400);
+  await runMockPhase(400, 'decay', onAudioFrame, abortSignal);
+  onAudioFrame?.({ level: 0, centroid: 0.15 });
+  throwIfMeasurementAborted(abortSignal);
 
   const { curve, measurementMeta } = createMockMeasurementRun(options);
 

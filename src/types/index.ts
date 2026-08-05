@@ -32,6 +32,8 @@ export type ChannelMode = 'left' | 'right' | 'both';
 
 export type SuggestionKind = 'cut' | 'boost' | 'null';
 
+export type EqFilterType = 'PK' | 'LS' | 'HS';
+
 export interface CurvePoint {
   frequency: number;
   db: number;
@@ -49,6 +51,7 @@ export interface Suggestion {
   enabled?: boolean;
   source?: SuggestionSource;
   customId?: string;
+  filterType?: EqFilterType;
 }
 
 export interface MeasurementMeta {

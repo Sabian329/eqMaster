@@ -1,7 +1,7 @@
 import { Button } from '@chakra-ui/react';
 import type { MeasurementSessionStep } from '../../types';
 import type { RoomEqState } from '../../hooks/useRoomEq';
-import { buttonStyles } from '../../theme';
+import { buttonStyles, modalStyles } from '../../theme';
 
 interface SessionFooterProps {
   sessionStep: MeasurementSessionStep;
@@ -9,9 +9,12 @@ interface SessionFooterProps {
   canFinish: boolean;
   allRunsDone: boolean;
   nextRunNumber: number;
+  lastCompletedRunNumber: number;
   isTestMode: boolean;
   onSkipMicTest: RoomEqState['handleSessionSkipMicTest'];
-  onRunMeasurement: RoomEqState['handleSessionRunMeasurement'];
+  onRunMeasurement: () => void;
+  onStopMeasurement: RoomEqState['handleSessionStopMeasurement'];
+  onRedoMeasurement: RoomEqState['handleSessionRedoMeasurement'];
   onContinue: RoomEqState['handleSessionContinue'];
   onFinish: RoomEqState['handleSessionFinish'];
   onCancel: RoomEqState['handleSessionCancel'];
@@ -23,9 +26,12 @@ export function SessionFooter({
   canFinish,
   allRunsDone,
   nextRunNumber,
+  lastCompletedRunNumber,
   isTestMode,
   onSkipMicTest,
   onRunMeasurement,
+  onStopMeasurement,
+  onRedoMeasurement,
   onContinue,
   onFinish,
   onCancel,
@@ -34,10 +40,10 @@ export function SessionFooter({
     <>
       {sessionStep === 'mic-test' && (
         <>
-          <Button borderRadius="lg" {...buttonStyles.secondary} onClick={onSkipMicTest}>
+          <Button {...buttonStyles.secondary} {...modalStyles.actionButton} onClick={onSkipMicTest}>
             Skip
           </Button>
-          <Button borderRadius="lg" {...buttonStyles.primary} onClick={onSkipMicTest}>
+          <Button {...buttonStyles.primary} {...modalStyles.actionButton} onClick={onSkipMicTest}>
             Continue to measurement
           </Button>
         </>
@@ -46,22 +52,18 @@ export function SessionFooter({
       {sessionStep === 'ready' && (
         <>
           <Button
-            borderRadius="lg"
             {...buttonStyles.secondary}
+            {...modalStyles.actionButton}
             disabled={!canFinish}
             onClick={() => void onFinish()}
           >
             Finish session
           </Button>
           <Button
-            borderRadius="lg"
             {...buttonStyles.primary}
+            {...modalStyles.actionButton}
             disabled={running}
-            onClick={() =>
-              onRunMeasurement().catch((error) =>
-                alert(error instanceof Error ? error.message : String(error)),
-              )
-            }
+            onClick={() => void onRunMeasurement()}
           >
             {isTestMode
               ? `Start mock ${nextRunNumber}`
@@ -73,29 +75,46 @@ export function SessionFooter({
       {sessionStep === 'run-complete' && (
         <>
           <Button
-            borderRadius="lg"
             {...buttonStyles.secondary}
+            {...modalStyles.actionButton}
             disabled={!canFinish}
             onClick={() => void onFinish()}
           >
             Finish session
           </Button>
+          <Button
+            {...buttonStyles.secondary}
+            {...modalStyles.actionButton}
+            onClick={() => onRedoMeasurement(lastCompletedRunNumber)}
+          >
+            {isTestMode
+              ? `Redo mock ${lastCompletedRunNumber}`
+              : `Redo measurement ${lastCompletedRunNumber}`}
+          </Button>
           {!allRunsDone && (
-            <Button borderRadius="lg" {...buttonStyles.primary} onClick={onContinue}>
+            <Button
+              {...buttonStyles.primary}
+              {...modalStyles.actionButton}
+              onClick={onContinue}
+            >
               Next measurement
             </Button>
           )}
         </>
       )}
 
-      {sessionStep !== 'measuring' && (
+      {sessionStep === 'measuring' && (
         <Button
-          borderRadius="lg"
-          variant="ghost"
-          color="gray.400"
-          ml="auto"
-          onClick={() => void onCancel()}
+          {...buttonStyles.danger}
+          {...modalStyles.actionButton}
+          onClick={onStopMeasurement}
         >
+          Stop measurement
+        </Button>
+      )}
+
+      {sessionStep !== 'measuring' && (
+        <Button {...modalStyles.cancelButton} onClick={() => void onCancel()}>
           Cancel
         </Button>
       )}

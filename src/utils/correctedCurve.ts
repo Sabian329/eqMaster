@@ -1,5 +1,8 @@
 import type { CurvePoint, Suggestion } from '../types';
+import { getFilterResponseDb } from '../audio/auto-eq/biquad';
 import { qToBandwidthOctaves } from './format';
+
+const PREVIEW_SAMPLE_RATE = 48_000;
 
 /** Peaking-filter magnitude (dB) for EQ preview — matches PK / BW Oct preset shape. */
 export function peakingFilterMagnitudeDb(
@@ -16,6 +19,30 @@ export function peakingFilterMagnitudeDb(
   const shape = 1 / (1 + (logOffset / halfWidth) ** 2);
 
   return gainDb * shape;
+}
+
+function filterMagnitudeDb(frequency: number, filter: Suggestion): number {
+  if (filter.gain === null || filter.gain === 0) return 0;
+
+  if (filter.filterType && filter.filterType !== 'PK') {
+    return getFilterResponseDb(
+      {
+        type: filter.filterType,
+        frequency: filter.frequency,
+        gainDb: filter.gain,
+        q: filter.q,
+      },
+      frequency,
+      PREVIEW_SAMPLE_RATE,
+    );
+  }
+
+  return peakingFilterMagnitudeDb(
+    frequency,
+    filter.frequency,
+    filter.gain,
+    filter.q,
+  );
 }
 
 export function buildCorrectedCurve(
@@ -36,12 +63,7 @@ export function buildCorrectedCurve(
   return measuredCurve.map((point) => {
     let eqDb = safePreamp;
     for (const filter of activeFilters) {
-      eqDb += peakingFilterMagnitudeDb(
-        point.frequency,
-        filter.frequency,
-        filter.gain!,
-        filter.q,
-      );
+      eqDb += filterMagnitudeDb(point.frequency, filter);
     }
 
     return {

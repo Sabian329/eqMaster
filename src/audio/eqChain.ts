@@ -1,5 +1,17 @@
-import type { ChannelMode, Suggestion } from '../types';
+import type { ChannelMode, EqFilterType, Suggestion } from '../types';
 import { clampSuggestionQ } from '../utils/suggestionQ';
+
+function getWebAudioFilterType(filterType: EqFilterType | undefined): BiquadFilterType {
+  switch (filterType) {
+    case 'LS':
+      return 'lowshelf';
+    case 'HS':
+      return 'highshelf';
+    case 'PK':
+    default:
+      return 'peaking';
+  }
+}
 
 export interface EqApplyProfile {
   suggestions: Suggestion[];
@@ -41,13 +53,13 @@ export function connectEqChain(
   tail = preamp;
 
   for (const filter of getActiveEqFilters(profile.suggestions)) {
-    const peaking = context.createBiquadFilter();
-    peaking.type = 'peaking';
-    peaking.frequency.value = Math.max(1, filter.frequency);
-    peaking.Q.value = clampSuggestionQ(filter.q);
-    peaking.gain.value = filter.gain ?? 0;
-    tail.connect(peaking);
-    tail = peaking;
+    const biquad = context.createBiquadFilter();
+    biquad.type = getWebAudioFilterType(filter.filterType);
+    biquad.frequency.value = Math.max(1, filter.frequency);
+    biquad.Q.value = clampSuggestionQ(filter.q);
+    biquad.gain.value = filter.gain ?? 0;
+    tail.connect(biquad);
+    tail = biquad;
   }
 
   tail.connect(destination);

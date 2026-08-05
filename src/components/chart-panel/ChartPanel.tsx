@@ -1,5 +1,8 @@
 import { Box, Card } from '@chakra-ui/react';
 import { panelStyles, ui } from '../../theme';
+import { ChartAlgorithmToggleFromState } from './ChartAlgorithmToggle';
+import { ChartV2RecalculateFromState } from './ChartV2Recalculate';
+import { ChartV3PanelFromState } from './ChartV3Panel';
 import { ChartEqEditor } from './chart-eq-editor';
 import { resolveChartFrequencyRange } from './constants';
 import { ChartHeader } from './ChartHeader';
@@ -39,6 +42,7 @@ export function ChartPanel({ state }: ChartPanelProps) {
           onToggleCorrectionFills={toggleCorrectionFills}
           hasCorrectionFills={filterOverlays.length > 0}
         />
+        <ChartAlgorithmToggleFromState state={state} />
       </Card.Header>
 
       <Box
@@ -60,6 +64,9 @@ export function ChartPanel({ state }: ChartPanelProps) {
             onAddCustomBand={state.addCustomBand}
           />
         </Box>
+
+        <ChartV2RecalculateFromState state={state} />
+        <ChartV3PanelFromState state={state} />
 
         <ChartEqEditor state={state} />
       </Box>

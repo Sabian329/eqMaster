@@ -11,7 +11,11 @@ export function getSessionStepTitle(
   nextRunNumber: number,
   sessionTargetCount: number,
   completedRuns: number,
+  activeRunNumber?: number | null,
+  isRedoRun?: boolean,
 ): string {
+  const runNumber = activeRunNumber ?? nextRunNumber;
+
   switch (sessionStep) {
     case 'mic-test':
       return 'Input level check';
@@ -20,9 +24,14 @@ export function getSessionStepTitle(
         ? `Mock measurement ${nextRunNumber} of ${sessionTargetCount}`
         : `Measurement ${nextRunNumber} of ${sessionTargetCount}`;
     case 'measuring':
+      if (isRedoRun) {
+        return isTestMode
+          ? `Re-running mock ${runNumber} of ${sessionTargetCount}`
+          : `Re-running measurement ${runNumber} of ${sessionTargetCount}`;
+      }
       return isTestMode
-        ? `Generating mock ${nextRunNumber} of ${sessionTargetCount}`
-        : `Running measurement ${nextRunNumber} of ${sessionTargetCount}`;
+        ? `Generating mock ${runNumber} of ${sessionTargetCount}`
+        : `Running measurement ${runNumber} of ${sessionTargetCount}`;
     case 'run-complete':
       return isTestMode
         ? `Mock ${completedRuns} complete`
@@ -50,8 +59,8 @@ export function getSessionStepDescription(
         : 'Sweep in progress — do not move the microphone or change volume.';
     case 'run-complete':
       return allRunsDone
-        ? 'All planned measurements are done. Finish the session to see individual runs and the averaged result.'
-        : 'You can continue with the next measurement or finish now using the completed runs.';
+        ? 'All planned measurements are done. Finish the session or redo any run to replace it.'
+        : 'Continue with the next measurement, redo this run to replace it, or finish now.';
     default:
       return '';
   }
