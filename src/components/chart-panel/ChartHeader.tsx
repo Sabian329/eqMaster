@@ -14,16 +14,17 @@ export function ChartHeader({ chartSeries }: ChartHeaderProps) {
         <Heading size="md" fontWeight="semibold" color="gray.100">
           Frequency response
         </Heading>
-        {hasCorrected && (
-          <Text fontSize="xs" color="gray.500" lineHeight="1.6" maxW="560px">
-            Orange{' '}
-            <Text as="span" color="#ff9f6b" fontWeight="semibold">
-              After EQ
-            </Text>{' '}
-            previews the averaged curve with suggested filters and preamp applied — updates
-            live when you change tone target, band count, preamp, or filter Q.
-          </Text>
-        )}
+            {hasCorrected && (
+              <Text fontSize="xs" color="gray.500" lineHeight="1.6" maxW="560px">
+                Orange{' '}
+                <Text as="span" color="#ff9f6b" fontWeight="semibold">
+                  After EQ
+                </Text>{' '}
+                previews the averaged curve with suggested filters and preamp applied — updates
+                live when you change tone target, band count, preamp, or filter Q. Click the
+                chart to add custom bands.
+              </Text>
+            )}
       </Stack>
       <HStack gap={4} fontSize="xs" color="gray.400" flexWrap="wrap">
         {chartSeries.map((item) => (

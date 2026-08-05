@@ -5,6 +5,7 @@ export interface EqBandBoardProps {
   setSuggestionQ: (key: string, q: number) => void;
   setSuggestionGain: (key: string, gain: number) => void;
   toggleSuggestionEnabled: (key: string) => void;
+  removeCustomBand?: (key: string) => void;
   embedded?: boolean;
 }
 
@@ -14,6 +15,7 @@ export interface EqBandStripProps {
   setSuggestionQ: (key: string, q: number) => void;
   setSuggestionGain: (key: string, gain: number) => void;
   toggleSuggestionEnabled: (key: string) => void;
+  removeCustomBand?: (key: string) => void;
   compact?: boolean;
 }
 

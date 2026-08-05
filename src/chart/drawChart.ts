@@ -1,4 +1,13 @@
 import type { ChartBounds, ChartSeries, CurvePoint } from '../types';
+import { drawFilterOverlays, type FilterOverlay } from './drawFilterOverlays';
+
+export const CHART_DB_MIN = -25;
+export const CHART_DB_MAX = 25;
+
+export interface DrawChartOptions {
+  filterOverlays?: FilterOverlay[];
+  frequencyGrid?: CurvePoint[];
+}
 
 function strokeSeries(
   context: CanvasRenderingContext2D,
@@ -34,7 +43,9 @@ export function drawChart(
   series: ChartSeries[],
   fMin: number,
   fMax: number,
+  options: DrawChartOptions = {},
 ): ChartBounds | null {
+  const { filterOverlays = [], frequencyGrid = [] } = options;
   const rect = canvas.getBoundingClientRect();
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const width = Math.max(320, rect.width);
@@ -61,19 +72,8 @@ export function drawChart(
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  const rawValues = allPoints.map((point) => point.db).sort((a, b) => a - b);
-  const pick = (fraction: number) =>
-    rawValues[Math.max(0, Math.min(rawValues.length - 1, Math.floor(fraction * (rawValues.length - 1))))];
-  const rawMin = Math.max(-60, pick(0.02));
-  const rawMax = Math.min(40, pick(0.98));
-  let yMin = Math.floor((Math.max(-60, rawMin) - 3) / 5) * 5;
-  let yMax = Math.ceil((Math.min(40, rawMax) + 3) / 5) * 5;
-
-  if (yMax - yMin < 30) {
-    const middle = (yMax + yMin) / 2;
-    yMin = Math.floor((middle - 15) / 5) * 5;
-    yMax = Math.ceil((middle + 15) / 5) * 5;
-  }
+  const yMin = CHART_DB_MIN;
+  const yMax = CHART_DB_MAX;
 
   const logMin = Math.log10(fMin);
   const logMax = Math.log10(fMax);
@@ -86,8 +86,8 @@ export function drawChart(
   context.textBaseline = 'middle';
   context.lineWidth = 1;
 
-  const yStep = yMax - yMin > 50 ? 10 : 5;
-  for (let db = Math.ceil(yMin / yStep) * yStep; db <= yMax; db += yStep) {
+  const yStep = 5;
+  for (let db = yMin; db <= yMax; db += yStep) {
     const y = yForDb(db);
     context.strokeStyle = lineColor;
     context.globalAlpha = db === 0 ? 0.9 : 0.55;
@@ -142,15 +142,41 @@ export function drawChart(
   const ordered = [...series].sort((a, b) => {
     const layer = (id: string) => {
       if (id === 'target') return 0;
-      if (id.startsWith('run-')) return 1;
-      if (id === 'average') return 2;
-      if (id === 'corrected') return 3;
-      return 2;
+      if (id.startsWith('run-')) return 2;
+      if (id === 'average') return 3;
+      if (id === 'corrected') return 5;
+      return 3;
     };
     return layer(a.id) - layer(b.id);
   });
 
-  for (const item of ordered) {
+  const targetSeries = ordered.filter((item) => item.id === 'target');
+  const lineSeries = ordered.filter((item) => item.id !== 'target');
+
+  for (const item of targetSeries) {
+    if (!item.curve.length) continue;
+    strokeSeries(
+      context,
+      item.curve,
+      xForFrequency,
+      yForDb,
+      item.color,
+      item.lineWidth,
+      item.alpha ?? 1,
+      item.dash,
+    );
+  }
+
+  const grid =
+    frequencyGrid.length > 0
+      ? frequencyGrid
+      : (ordered.find((item) => item.id === 'average') ??
+          ordered.find((item) => item.id.startsWith('run-')) ??
+          ordered[0])?.curve ?? [];
+
+  drawFilterOverlays(context, grid, filterOverlays, xForFrequency, yForDb);
+
+  for (const item of lineSeries) {
     if (!item.curve.length) continue;
     strokeSeries(
       context,

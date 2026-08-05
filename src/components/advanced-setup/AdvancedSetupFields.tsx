@@ -1,4 +1,5 @@
 import { Stack } from '@chakra-ui/react';
+import { SetupSection } from './SetupSection';
 import { DeviceSection } from './sections/DeviceSection';
 import { SweepSection } from './sections/SweepSection';
 import {
@@ -17,24 +18,44 @@ export function AdvancedSetupFields({
   const { curve } = state;
 
   return (
-    <Stack gap={5}>
+    <Stack gap={3}>
       {isTestMode && <TestModeBanner />}
 
-      <DeviceSection
-        state={state}
-        isTestMode={isTestMode}
-        hardwareDisabled={hardwareDisabled}
-      />
+      <SetupSection
+        title="Audio routing"
+        subtitle="Select capture and playback devices. Grant browser permissions before measuring."
+      >
+        <DeviceSection
+          state={state}
+          isTestMode={isTestMode}
+          hardwareDisabled={hardwareDisabled}
+        />
+      </SetupSection>
 
-      <SweepSection state={state} />
+      <SetupSection
+        title="Sweep parameters"
+        subtitle="Logarithmic sine sweep range, duration, and analysis smoothing."
+      >
+        <SweepSection state={state} />
+      </SetupSection>
 
-      <SessionSettingsSection state={state} isTestMode={isTestMode} />
+      <SetupSection
+        title="Session & level"
+        subtitle="Number of averaged runs and digital sweep amplitude."
+      >
+        <SessionSettingsSection state={state} isTestMode={isTestMode} />
+      </SetupSection>
 
-      <CalibrationLevelSection
-        state={state}
-        isTestMode={isTestMode}
-        hardwareDisabled={hardwareDisabled}
-      />
+      <SetupSection
+        title="Calibration & verification"
+        subtitle="Optional mic correction file and pre-flight level check."
+      >
+        <CalibrationLevelSection
+          state={state}
+          isTestMode={isTestMode}
+          hardwareDisabled={hardwareDisabled}
+        />
+      </SetupSection>
 
       {isTestMode && curve.length > 0 && <TestLoadedPanel state={state} />}
     </Stack>

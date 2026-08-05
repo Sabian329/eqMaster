@@ -19,6 +19,12 @@ export const MEASUREMENT_COUNT_OPTIONS: { value: MeasurementCount; label: string
   { value: 3, label: '3 measurements (averaged)' },
 ];
 
+export const CHANNEL_OPTIONS = [
+  { value: 'both', label: 'L + R (stereo)' },
+  { value: 'left', label: 'Left only' },
+  { value: 'right', label: 'Right only' },
+] as const;
+
 export function formatLevelLabel(level: number): string {
   return `${String(level).replace('-', '−')} dB`;
 }

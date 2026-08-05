@@ -1,4 +1,4 @@
-import { Button, HStack } from '@chakra-ui/react';
+import { Button, HStack, Text } from '@chakra-ui/react';
 import type { RoomEqState } from '../../hooks/useRoomEq';
 import { buttonStyles } from '../../theme';
 
@@ -20,7 +20,7 @@ export function DeviceActionButtons({
   onRefreshDevices,
 }: DeviceActionButtonsProps) {
   return (
-    <HStack gap={2} flexWrap="wrap">
+    <HStack gap={2} flexWrap="wrap" align="center">
       <Button
         size="sm"
         borderRadius="lg"
@@ -28,7 +28,7 @@ export function DeviceActionButtons({
         disabled={disabled}
         onClick={() => onRequestPermission().catch((e) => alert(e.message))}
       >
-        Show inputs
+        Grant mic access
       </Button>
       <Button
         size="sm"
@@ -47,12 +47,20 @@ export function DeviceActionButtons({
       <Button
         size="sm"
         borderRadius="lg"
-        {...buttonStyles.secondary}
+        variant="ghost"
+        color="gray.400"
+        fontWeight="medium"
+        _hover={{ color: 'gray.200', bg: 'whiteAlpha.80' }}
         disabled={disabled}
         onClick={() => onRefreshDevices().catch((e) => alert(e.message))}
       >
-        Refresh
+        Refresh list
       </Button>
+      {!env.supportsSink && (
+        <Text fontSize="2xs" color="gray.600">
+          Output selection limited in this browser
+        </Text>
+      )}
     </HStack>
   );
 }

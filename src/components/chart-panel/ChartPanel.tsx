@@ -29,7 +29,14 @@ export function ChartPanel({ state }: ChartPanelProps) {
         boxShadow="0 12px 32px rgba(0,0,0,.45)"
       >
         <Box minH={{ base: '240px', md: '280px' }} position="relative">
-          <FrequencyChart series={chartSeries} fMin={fMin} fMax={fMax} />
+          <FrequencyChart
+            series={chartSeries}
+            fMin={fMin}
+            fMax={fMax}
+            suggestions={state.suggestions}
+            filterOverlays={state.filterOverlays}
+            onAddCustomBand={state.addCustomBand}
+          />
         </Box>
 
         <ChartEqEditor state={state} />

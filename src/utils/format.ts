@@ -12,8 +12,22 @@ export function formatFrequency(value: number): string {
   return `${Math.round(value)} Hz`;
 }
 
+export const METER_DB_MIN = -60;
+export const METER_DB_MAX = 0;
+/** Recommended mic peak window for room measurements. */
+export const METER_OPTIMAL_MIN_DB = -18;
+export const METER_OPTIMAL_MAX_DB = -8;
+
 export function dbToMeterPercent(db: number): number {
-  return Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+  if (!Number.isFinite(db)) return 0;
+  return Math.max(
+    0,
+    Math.min(100, ((db - METER_DB_MIN) / (METER_DB_MAX - METER_DB_MIN)) * 100),
+  );
+}
+
+export function isMeterInOptimalRange(db: number): boolean {
+  return Number.isFinite(db) && db >= METER_OPTIMAL_MIN_DB && db <= METER_OPTIMAL_MAX_DB;
 }
 
 export function compactNumber(value: number, decimals = 2): string {

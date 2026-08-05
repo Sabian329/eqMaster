@@ -94,14 +94,143 @@ export const tabStyles = {
   },
   trigger: {
     borderRadius: 'lg',
-    py: 2,
+    py: 2.5,
+    px: 4,
     fontWeight: 'medium',
-    color: 'gray.300',
+    fontSize: 'sm',
+    color: 'gray.400',
+    transition: 'background .15s, color .15s',
     _selected: {
       bg: 'brand.400',
       color: 'gray.900',
       fontWeight: 'bold',
-      shadow: 'sm',
+      shadow: '0 4px 14px rgba(101,169,255,.25)',
     },
+    _hover: {
+      color: 'gray.200',
+    },
+  },
+} as const;
+
+export const sliderStyles = {
+  track: {
+    bg: 'whiteAlpha.200',
+    h: '8px',
+    borderRadius: 'full',
+    shadow: 'inset 0 1px 2px rgba(0,0,0,.25)',
+  },
+  range: {
+    bg: 'brand.400',
+    borderRadius: 'full',
+  },
+  thumb: {
+    boxSize: '20px',
+    bg: 'white',
+    borderWidth: '2px',
+    borderColor: 'brand.300',
+    borderRadius: 'full',
+    shadow: '0 2px 10px rgba(101,169,255,.35)',
+    _focusVisible: {
+      outline: '2px solid',
+      outlineColor: 'brand.400',
+      outlineOffset: '2px',
+    },
+  },
+  tickLabel: {
+    fontSize: 'xs',
+    color: 'gray.500',
+    fontVariantNumeric: 'tabular-nums',
+  },
+} as const;
+
+export const setupSectionStyles = {
+  root: {
+    borderRadius: '2xl',
+    borderWidth: '1px',
+    borderColor: 'whiteAlpha.100',
+    bg: 'linear-gradient(160deg, rgba(22,28,40,.96), rgba(13,17,25,.98))',
+    overflow: 'hidden',
+    boxShadow: '0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)',
+  },
+  header: {
+    px: { base: 4, md: 5 },
+    py: 3.5,
+    borderBottomWidth: '1px',
+    borderColor: 'whiteAlpha.80',
+    bg: 'linear-gradient(180deg, rgba(255,255,255,.04), transparent)',
+  },
+  title: {
+    fontSize: 'sm',
+    fontWeight: 'semibold',
+    color: 'gray.100',
+    letterSpacing: '-0.01em',
+  },
+  subtitle: {
+    fontSize: 'xs',
+    color: 'gray.500',
+    lineHeight: 1.55,
+  },
+  body: {
+    p: { base: 4, md: 5 },
+  },
+  summaryStrip: {
+    p: 3.5,
+    borderRadius: 'xl',
+    borderWidth: '1px',
+    borderColor: 'whiteAlpha.80',
+    bg: 'rgba(0,0,0,.18)',
+  },
+  summaryLabel: {
+    fontSize: '2xs',
+    fontWeight: 'semibold',
+    color: 'gray.500',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    mb: 2,
+  },
+  fieldGrid: {
+    columns: { base: 1, md: 2 },
+    gap: 4,
+  },
+  fieldGridWide: {
+    columns: { base: 1, sm: 2, lg: 4 },
+    gap: 4,
+  },
+  insetPanel: {
+    p: 4,
+    borderRadius: 'xl',
+    borderWidth: '1px',
+    borderColor: 'whiteAlpha.100',
+    bg: 'rgba(0,0,0,.22)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,.03)',
+  },
+  actionBar: {
+    p: 3,
+    borderRadius: 'xl',
+    borderWidth: '1px',
+    borderColor: 'whiteAlpha.100',
+    bg: 'rgba(0,0,0,.18)',
+  },
+} as const;
+
+export const launchPanelStyles = {
+  root: {
+    p: { base: 4, md: 5 },
+    borderRadius: '2xl',
+    borderWidth: '1px',
+    borderColor: 'whiteAlpha.120',
+    bg: 'linear-gradient(145deg, rgba(18,24,36,.98), rgba(10,14,22,.98))',
+    boxShadow: '0 12px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05)',
+  },
+  title: {
+    fontSize: 'sm',
+    fontWeight: 'semibold',
+    color: 'gray.100',
+  },
+  subtitle: {
+    fontSize: 'xs',
+    color: 'gray.500',
+    lineHeight: 1.6,
+    maxW: '520px',
   },
 } as const;

@@ -5,16 +5,15 @@ import {
   Field,
   Flex,
   HStack,
-  Input,
   NativeSelect,
   SimpleGrid,
-  Slider,
+  Stack,
   Text,
 } from '@chakra-ui/react';
 import type { MeasurementCount } from '../../../types';
 import type { RoomEqState } from '../../../hooks/useRoomEq';
-import { badgeStyles, buttonStyles, fieldStyles } from '../../../theme';
-import { FormHelper, FormLabel, LevelMeter } from '../../shared';
+import { badgeStyles, buttonStyles, fieldStyles, setupSectionStyles } from '../../../theme';
+import { FilePicker, FormHelper, FormLabel, LevelMeter, LevelSlider } from '../../shared';
 import { formatLevelLabel, MEASUREMENT_COUNT_OPTIONS } from '../constants';
 
 interface SessionSettingsSectionProps {
@@ -27,7 +26,7 @@ export function SessionSettingsSection({ state, isTestMode }: SessionSettingsSec
   const levelLabel = formatLevelLabel(level);
 
   return (
-    <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+    <SimpleGrid {...setupSectionStyles.fieldGrid}>
       <Field.Root>
         <FormLabel>Measurements per session</FormLabel>
         <NativeSelect.Root size="md">
@@ -48,41 +47,36 @@ export function SessionSettingsSection({ state, isTestMode }: SessionSettingsSec
         <FormHelper>
           {isTestMode
             ? 'Each mock run varies slightly — useful for testing averaging.'
-            : 'Average multiple sweeps; finish early anytime.'}
+            : 'Run multiple sweeps and average — reduces noise and seat-to-seat variation.'}
         </FormHelper>
       </Field.Root>
 
-      <Field.Root>
-        <Flex justify="space-between" align="center" mb={2}>
-          <Field.Label {...fieldStyles.label} mb={0}>
-            Sweep digital level
-          </Field.Label>
-          <Badge {...badgeStyles.info}>{levelLabel}</Badge>
+      <Box {...setupSectionStyles.insetPanel}>
+        <Flex justify="space-between" align="center" mb={4} gap={3} flexWrap="wrap">
+          <Stack gap={0.5}>
+            <Text fontSize="sm" fontWeight="semibold" color="gray.100" letterSpacing="-0.01em">
+              Sweep digital level
+            </Text>
+            <Text fontSize="xs" color="gray.500">
+              {isTestMode
+                ? 'Stored in mock metadata only.'
+                : 'Relative dBFS — not calibrated SPL.'}
+            </Text>
+          </Stack>
+          <Badge {...badgeStyles.info} fontSize="sm" px={2.5}>
+            {levelLabel}
+          </Badge>
         </Flex>
-        <Slider.Root
-          w="full"
+        <LevelSlider
           min={-36}
           max={-6}
           step={1}
-          value={[level]}
-          onValueChange={(details) => setLevel(details.value[0])}
-          variant="outline"
-          colorPalette="brand"
-          size="md"
-        >
-          <Slider.Control py={2} w="full">
-            <Slider.Track bg="whiteAlpha.300" shadow="inset">
-              <Slider.Range bg="brand.400" />
-            </Slider.Track>
-            <Slider.Thumbs />
-          </Slider.Control>
-        </Slider.Root>
-        <FormHelper>
-          {isTestMode
-            ? 'Stored in mock metadata only.'
-            : 'Not SPL — depends on interface and monitors.'}
-        </FormHelper>
-      </Field.Root>
+          value={level}
+          onChange={setLevel}
+          minLabel="−36 dB"
+          maxLabel="−6 dB"
+        />
+      </Box>
     </SimpleGrid>
   );
 }
@@ -108,65 +102,57 @@ export function CalibrationLevelSection({
   } = state;
 
   return (
-    <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+    <SimpleGrid {...setupSectionStyles.fieldGrid}>
       <Field.Root>
-        <FormLabel>Microphone calibration — optional</FormLabel>
-        <Input
-          type="file"
+        <FormLabel>Mic calibration file</FormLabel>
+        <FilePicker
           accept=".txt,.csv,.cal"
-          pt={1}
           disabled={hardwareDisabled}
-          {...fieldStyles.control}
-          onChange={(e) => {
-            const file = e.target.files?.[0] ?? null;
-            void handleCalibrationFile(file);
-          }}
+          buttonLabel="Choose file"
+          placeholder="No calibration file"
+          onFileChange={handleCalibrationFile}
         />
         <FormHelper>{isTestMode ? 'Not used in test mode.' : calibrationStatus}</FormHelper>
       </Field.Root>
 
       <Box
-        p={4}
-        borderRadius="xl"
-        borderWidth="1px"
-        borderColor="whiteAlpha.100"
-        bg="whiteAlpha.40"
+        {...setupSectionStyles.insetPanel}
         opacity={hardwareDisabled ? 0.55 : 1}
       >
-        <Text fontSize="sm" fontWeight="medium" color="gray.300" mb={1}>
-          Level check
-        </Text>
-        <Text fontSize="xs" color="gray.500" mb={3} lineHeight="1.55">
-          {isTestMode
-            ? 'Unavailable in test mode — no live audio.'
-            : 'Pink noise at sweep level + live mic meter.'}
-        </Text>
-        {!meterActive ? (
-          <Button
-            size="sm"
-            borderRadius="lg"
-            {...buttonStyles.secondary}
-            disabled={hardwareDisabled}
-            onClick={() => handleStartMeter().catch((e) => alert(e.message))}
-          >
-            Start level check
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            borderRadius="lg"
-            {...buttonStyles.danger}
-            onClick={handleStopMeter}
-          >
-            Stop level check
-          </Button>
-        )}
+        <Flex justify="space-between" align="flex-start" gap={3} mb={3} flexWrap="wrap">
+          <Stack gap={0.5} flex={1}>
+            <Text fontSize="sm" fontWeight="semibold" color="gray.200">
+              Pre-measurement level check
+            </Text>
+            <Text fontSize="xs" color="gray.500" lineHeight="1.55">
+              {isTestMode
+                ? 'Unavailable in test mode — no live audio.'
+                : 'Pink noise at sweep level with live mic meter. Aim for the green zone (−18…−8 dBFS).'}
+            </Text>
+          </Stack>
+          {!meterActive ? (
+            <Button
+              size="sm"
+              borderRadius="lg"
+              {...buttonStyles.secondary}
+              disabled={hardwareDisabled}
+              onClick={() => handleStartMeter().catch((e) => alert(e.message))}
+            >
+              Start level check
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              borderRadius="lg"
+              {...buttonStyles.danger}
+              onClick={handleStopMeter}
+            >
+              Stop
+            </Button>
+          )}
+        </Flex>
 
-        {meterActive && (
-          <Box mt={4}>
-            <LevelMeter meterDb={meterDb} />
-          </Box>
-        )}
+        {meterActive && <LevelMeter meterDb={meterDb} />}
       </Box>
     </SimpleGrid>
   );
@@ -184,10 +170,10 @@ export function TestLoadedPanel({ state }: TestLoadedPanelProps) {
       p={4}
       borderRadius="xl"
       borderWidth="1px"
-      borderColor="whiteAlpha.100"
-      bg="whiteAlpha.40"
+      borderColor="rgba(255,191,90,.35)"
+      bg="linear-gradient(145deg, rgba(255,191,90,.1), rgba(12,16,24,.5))"
     >
-      <Text fontSize="sm" fontWeight="medium" color="gray.200" mb={1}>
+      <Text fontSize="sm" fontWeight="semibold" color="gray.100" mb={1}>
         Test measurement loaded
       </Text>
       <Text fontSize="xs" color="gray.500" lineHeight="1.6" mb={3}>

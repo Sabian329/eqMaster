@@ -12,4 +12,7 @@ export interface FrequencyChartProps {
   series: import('../../types').ChartSeries[];
   fMin?: number;
   fMax?: number;
+  suggestions?: import('../../types').Suggestion[];
+  filterOverlays?: import('../../chart/drawFilterOverlays').FilterOverlay[];
+  onAddCustomBand?: (frequency: number) => boolean;
 }

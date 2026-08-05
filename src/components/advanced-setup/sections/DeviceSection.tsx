@@ -1,8 +1,17 @@
-import { Field, NativeSelect, SimpleGrid } from '@chakra-ui/react';
+import {
+  Box,
+  Field,
+  NativeSelect,
+  SimpleGrid,
+  Stack,
+  Text,
+} from '@chakra-ui/react';
+import type { ChannelMode } from '../../../types';
 import type { RoomEqState } from '../../../hooks/useRoomEq';
-import { fieldStyles } from '../../../theme';
+import { fieldStyles, setupSectionStyles } from '../../../theme';
 import { DeviceActionButtons, FormHelper, FormLabel } from '../../shared';
 import { DeviceStatusAlert } from '../../ui/StatusAlert';
+import { CHANNEL_OPTIONS } from '../constants';
 
 interface DeviceSectionProps {
   state: RoomEqState;
@@ -21,27 +30,34 @@ export function DeviceSection({ state, isTestMode, hardwareDisabled }: DeviceSec
     setInputDeviceId,
     outputDeviceId,
     setOutputDeviceId,
+    channel,
+    setChannel,
     handleRequestPermission,
     handleChooseOutput,
     handleRefreshDevices,
   } = state;
 
   return (
-    <>
-      <DeviceActionButtons
-        env={env}
-        sinkHelp={sinkHelp}
-        disabled={hardwareDisabled}
-        onRequestPermission={handleRequestPermission}
-        onChooseOutput={handleChooseOutput}
-        onRefreshDevices={handleRefreshDevices}
-      />
+    <Stack gap={4}>
+      <Box {...setupSectionStyles.actionBar}>
+        <Text fontSize="xs" fontWeight="medium" color="gray.500" mb={2.5}>
+          Device access
+        </Text>
+        <DeviceActionButtons
+          env={env}
+          sinkHelp={sinkHelp}
+          disabled={hardwareDisabled}
+          onRequestPermission={handleRequestPermission}
+          onChooseOutput={handleChooseOutput}
+          onRefreshDevices={handleRefreshDevices}
+        />
+      </Box>
 
       {!isTestMode && (
         <DeviceStatusAlert message={deviceStatus.message} type={deviceStatus.type} />
       )}
 
-      <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+      <SimpleGrid {...setupSectionStyles.fieldGrid}>
         <Field.Root>
           <FormLabel>Microphone input</FormLabel>
           <NativeSelect.Root size="md" disabled={hardwareDisabled}>
@@ -58,8 +74,10 @@ export function DeviceSection({ state, isTestMode, hardwareDisabled }: DeviceSec
               ))}
             </NativeSelect.Field>
           </NativeSelect.Root>
-          {isTestMode && (
+          {isTestMode ? (
             <FormHelper>Ignored in test mode — mock mic is used.</FormHelper>
+          ) : (
+            <FormHelper>Measurement microphone or interface input.</FormHelper>
           )}
         </Field.Root>
 
@@ -83,7 +101,26 @@ export function DeviceSection({ state, isTestMode, hardwareDisabled }: DeviceSec
             {isTestMode ? 'Ignored in test mode — no audio is played.' : sinkHelp}
           </FormHelper>
         </Field.Root>
+
+        <Field.Root gridColumn={{ md: '1 / -1' }}>
+          <FormLabel>Measured channel</FormLabel>
+          <NativeSelect.Root size="md" disabled={hardwareDisabled}>
+            <NativeSelect.Field
+              {...fieldStyles.control}
+              maxW={{ md: '280px' }}
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as ChannelMode)}
+            >
+              {CHANNEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </NativeSelect.Field>
+          </NativeSelect.Root>
+          <FormHelper>Which speaker channel the sweep excites during this session.</FormHelper>
+        </Field.Root>
       </SimpleGrid>
-    </>
+    </Stack>
   );
 }

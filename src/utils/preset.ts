@@ -1,5 +1,6 @@
 import type { Suggestion } from '../types';
-import { compactNumber, qToBandwidthOctaves } from './format';
+import { clampSuggestionQ } from './suggestionQ';
+import { compactNumber } from './format';
 
 export function buildPresetText(
   name: string,
@@ -22,14 +23,11 @@ export function buildPresetText(
     const enabled = item.enabled !== false && hasGain ? 'ON' : 'OFF';
     const frequency = Math.max(1, Math.round(item.frequency));
     const gain = hasGain ? Number(item.gain) : 0;
-    const bandwidth = Math.max(
-      0.01,
-      Math.min(8, qToBandwidthOctaves(item.q)),
-    );
+    const q = clampSuggestionQ(item.q);
 
     lines.push(
       `Filter ${index + 1}:  ${enabled}  PK  Fc ${frequency} Hz  ` +
-        `Gain ${compactNumber(gain, 2)} dB  BW Oct ${compactNumber(bandwidth, 3)}`,
+        `Gain ${compactNumber(gain, 2)} dB  Q ${compactNumber(q, 2)}`,
     );
   });
 

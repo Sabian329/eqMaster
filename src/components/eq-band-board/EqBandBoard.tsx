@@ -8,13 +8,14 @@ export function EqBandBoard({
   setSuggestionQ,
   setSuggestionGain,
   toggleSuggestionEnabled,
+  removeCustomBand,
   embedded = false,
 }: EqBandBoardProps) {
   if (!suggestions.length) {
     return (
       <Box p={6} color="gray.500" fontSize="sm" lineHeight="1.65">
-        No clear local peaks or dips exceeded the suggestion thresholds. Review the
-        chart and consider running a longer measurement.
+        No auto-detected filters for this measurement. Click anywhere on the frequency chart
+        above to add a custom band at that frequency.
       </Box>
     );
   }
@@ -43,6 +44,7 @@ export function EqBandBoard({
             setSuggestionQ={setSuggestionQ}
             setSuggestionGain={setSuggestionGain}
             toggleSuggestionEnabled={toggleSuggestionEnabled}
+            removeCustomBand={removeCustomBand}
             compact={embedded}
           />
         ))}

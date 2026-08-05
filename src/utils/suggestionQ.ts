@@ -3,8 +3,8 @@ import type { Suggestion, SuggestionKind } from '../types';
 export const SUGGESTION_Q_MIN = 0.3;
 export const SUGGESTION_Q_MAX = 12;
 
-export const SUGGESTION_GAIN_MIN = -10;
-export const SUGGESTION_GAIN_MAX = 10;
+export const SUGGESTION_GAIN_MIN = -25;
+export const SUGGESTION_GAIN_MAX = 25;
 
 /** @deprecated Use SUGGESTION_GAIN_MIN */
 export const SUGGESTION_GAIN_CUT_MIN = SUGGESTION_GAIN_MIN;
@@ -15,8 +15,17 @@ export const SUGGESTION_GAIN_BOOST_MIN = 0;
 /** @deprecated Use SUGGESTION_GAIN_MAX */
 export const SUGGESTION_GAIN_BOOST_MAX = SUGGESTION_GAIN_MAX;
 
-export function suggestionKey(item: Pick<Suggestion, 'kind' | 'frequency'>): string {
+export function suggestionKey(
+  item: Pick<Suggestion, 'kind' | 'frequency' | 'source' | 'customId'>,
+): string {
+  if (item.source === 'custom' && item.customId) {
+    return `custom:${item.customId}`;
+  }
   return `${item.kind}:${Math.round(item.frequency)}`;
+}
+
+export function isCustomSuggestion(item: Pick<Suggestion, 'source'>): boolean {
+  return item.source === 'custom';
 }
 
 export function clampSuggestionQ(q: number): number {

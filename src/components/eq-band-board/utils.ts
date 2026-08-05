@@ -4,7 +4,8 @@ import {
   SUGGESTION_GAIN_MIN,
   clampBipolarGain,
 } from '../../utils/suggestionQ';
-import { BAND_COLORS } from './constants';
+
+export { bandColorForIndex } from '../../config/bandColors';
 
 export function gainToTopPercent(gain: number): number {
   return (
@@ -29,12 +30,9 @@ export function formatGainLabel(item: Suggestion): string {
 }
 
 export function getFilterTypeLabel(item: Suggestion): string {
+  if (item.source === 'custom') return 'Custom';
   const enabled = item.enabled !== false;
   if (item.kind === 'cut') return 'Peak';
   if (item.kind === 'boost' || (item.kind === 'null' && enabled)) return 'Dip';
   return 'Null';
-}
-
-export function bandColorForIndex(index: number): string {
-  return BAND_COLORS[index % BAND_COLORS.length];
 }

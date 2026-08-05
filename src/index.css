@@ -435,6 +435,74 @@ canvas {
   white-space: nowrap;
 }
 
+.chart-wrap--interactive canvas {
+  cursor: crosshair;
+}
+
+.chart-add-band-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.chart-add-band-popup {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, calc(-100% - 14px));
+  min-width: 112px;
+  border: 1px solid rgba(255, 191, 90, 0.45);
+  background: rgba(10, 13, 19, 0.96);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.chart-add-band-popup__freq {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f3f4f6;
+  margin-bottom: 2px;
+}
+
+.chart-add-band-popup__meta {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.chart-add-band-popup__hint {
+  font-size: 10px;
+  line-height: 1.4;
+  color: #ffbf5a;
+}
+
+.chart-add-band-popup__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 191, 90, 0.55);
+  background: rgba(255, 191, 90, 0.14);
+  color: #ffd28c;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.chart-add-band-popup__add:hover {
+  background: rgba(255, 191, 90, 0.24);
+  transform: scale(1.05);
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;

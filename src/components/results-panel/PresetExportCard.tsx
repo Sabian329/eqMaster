@@ -64,7 +64,7 @@ export function PresetExportCard({ state }: PresetExportCardProps) {
           borderColor="whiteAlpha.200"
           color="gray.200"
         >
-          Name / Preamp / Filter / PK / Fc / Gain / BW Oct
+              Name / Preamp / Filter / PK / Fc / Gain / Q
         </Code>
         . Nulls export as <strong>OFF</strong>.
       </Text>

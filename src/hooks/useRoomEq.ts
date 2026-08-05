@@ -35,6 +35,11 @@ import {
   isSuggestionEnabled,
   suggestionKey,
 } from '../utils/suggestionQ';
+import {
+  createCustomSuggestion,
+  isBandTooClose,
+  mergeSuggestions,
+} from '../utils/customBands';
 import { runMockMeasurement, createMockMeasurementRun } from '../utils/mockMeasurement';
 import {
   MEASUREMENT_PRESETS,
@@ -47,6 +52,13 @@ import {
   type EqBandCount,
   type ToneProfileId,
 } from '../config/toneProfiles';
+import {
+  EQ_STRATEGIES,
+  getEqStrategy,
+  type EqStrategyId,
+} from '../config/eqStrategies';
+import { bandColorForIndex } from '../config/bandColors';
+import type { FilterOverlay } from '../chart/drawFilterOverlays';
 
 const RUN_COLORS = ['#8ec5ff', '#55d68b', '#ffbf5a'];
 
@@ -178,8 +190,9 @@ export function useRoomEq() {
   const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
 
   const [eqBandCount, setEqBandCount] = useState<EqBandCount>(8);
+  const [eqStrategyId, setEqStrategyId] = useState<EqStrategyId>('fit');
   const [toneProfileId, setToneProfileId] = useState<ToneProfileId>('flat');
-  const [setupMode, setSetupMode] = useState<SetupMode>('simple');
+  const [setupMode, setSetupMode] = useState<SetupMode>('live');
 
   const isTestMode = setupMode === 'test';
 
@@ -200,6 +213,7 @@ export function useRoomEq() {
   const [suggestionEnabledOverrides, setSuggestionEnabledOverrides] = useState<
     Record<string, boolean>
   >({});
+  const [customSuggestions, setCustomSuggestions] = useState<Suggestion[]>([]);
 
   const refreshDevices = useCallback(
     async (permissionJustGranted = false) => {
@@ -307,8 +321,8 @@ export function useRoomEq() {
   const computedSuggestions = useMemo((): Suggestion[] => {
     if (!curve.length) return [];
     const adjustedCurve = applyToneTarget(curve, activeToneProfile);
-    return createSuggestions(adjustedCurve, eqBandCount);
-  }, [curve, activeToneProfile, eqBandCount]);
+    return createSuggestions(adjustedCurve, eqBandCount, eqStrategyId);
+  }, [curve, activeToneProfile, eqBandCount, eqStrategyId]);
 
   const suggestionSignature = useMemo(
     () =>
@@ -324,21 +338,40 @@ export function useRoomEq() {
     setSuggestionEnabledOverrides({});
   }, [suggestionSignature]);
 
+  const mergedSuggestions = useMemo(
+    () => mergeSuggestions(computedSuggestions, customSuggestions),
+    [computedSuggestions, customSuggestions],
+  );
+
   const suggestions = useMemo(
     () =>
       applySuggestionAdjustments(
-        computedSuggestions,
+        mergedSuggestions,
         suggestionQOverrides,
         suggestionGainOverrides,
         suggestionEnabledOverrides,
       ),
     [
-      computedSuggestions,
+      mergedSuggestions,
       suggestionQOverrides,
       suggestionGainOverrides,
       suggestionEnabledOverrides,
     ],
   );
+
+  const filterOverlays = useMemo((): FilterOverlay[] => {
+    return suggestions
+      .filter(
+        (item) =>
+          item.enabled !== false && item.gain !== null && Math.abs(item.gain) > 0.05,
+      )
+      .map((item, index) => ({
+        frequency: item.frequency,
+        gain: item.gain ?? 0,
+        q: item.q,
+        color: bandColorForIndex(index),
+      }));
+  }, [suggestions]);
 
   const globalBandQ = useMemo(() => {
     if (!suggestions.length) return 1;
@@ -357,24 +390,24 @@ export function useRoomEq() {
     (q: number) => {
       const clamped = clampSuggestionQ(q);
       const next: Record<string, number> = {};
-      for (const item of computedSuggestions) {
+      for (const item of mergedSuggestions) {
         next[suggestionKey(item)] = clamped;
       }
       setSuggestionQOverrides(next);
     },
-    [computedSuggestions],
+    [mergedSuggestions],
   );
 
   const scaleAllSuggestionQ = useCallback(
     (factor: number) => {
       const safeFactor = Math.max(0.25, Math.min(2, factor));
       const next: Record<string, number> = {};
-      for (const item of computedSuggestions) {
+      for (const item of mergedSuggestions) {
         next[suggestionKey(item)] = clampSuggestionQ(item.q * safeFactor);
       }
       setSuggestionQOverrides(next);
     },
-    [computedSuggestions],
+    [mergedSuggestions],
   );
 
   const setSuggestionGain = useCallback((key: string, gain: number) => {
@@ -386,7 +419,7 @@ export function useRoomEq() {
 
   const toggleSuggestionEnabled = useCallback(
     (key: string) => {
-      const item = computedSuggestions.find((entry) => suggestionKey(entry) === key);
+      const item = mergedSuggestions.find((entry) => suggestionKey(entry) === key);
       if (!item) return;
 
       setSuggestionEnabledOverrides((previous) => {
@@ -404,8 +437,43 @@ export function useRoomEq() {
         return { ...previous, [key]: nextEnabled };
       });
     },
-    [computedSuggestions],
+    [mergedSuggestions],
   );
+
+  const addCustomBand = useCallback(
+    (frequency: number): boolean => {
+      if (!curve.length) return false;
+      if (isBandTooClose(frequency, mergedSuggestions)) return false;
+
+      const nextBand = createCustomSuggestion(frequency, curve, targetCurve);
+      setCustomSuggestions((previous) =>
+        [...previous, nextBand].sort((a, b) => a.frequency - b.frequency),
+      );
+      return true;
+    },
+    [curve, mergedSuggestions, targetCurve],
+  );
+
+  const removeCustomBand = useCallback((key: string) => {
+    setCustomSuggestions((previous) =>
+      previous.filter((item) => suggestionKey(item) !== key),
+    );
+    setSuggestionQOverrides((previous) => {
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+    setSuggestionGainOverrides((previous) => {
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+    setSuggestionEnabledOverrides((previous) => {
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+  }, []);
 
   const resetSuggestionQ = useCallback(() => {
     setSuggestionQOverrides({});
@@ -459,8 +527,27 @@ export function useRoomEq() {
     if (!suggestions.length) {
       return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
     }
-    return `${suggestions.length} filter${suggestions.length > 1 ? 's' : ''} for ${activeToneProfile.label} (max ${eqBandCount} bands).`;
-  }, [curve.length, suggestions.length, activeToneProfile.label, eqBandCount]);
+    const autoCount = computedSuggestions.length;
+    const customCount = customSuggestions.length;
+    const total = suggestions.length;
+    if (!total) {
+      return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
+    }
+    const customSuffix =
+      customCount > 0
+        ? ` (${autoCount} auto + ${customCount} custom)`
+        : '';
+    const strategyLabel = getEqStrategy(eqStrategyId).label;
+    return `${total} filter${total > 1 ? 's' : ''} · ${strategyLabel} · ${activeToneProfile.label} (max ${eqBandCount} auto bands)${customSuffix}.`;
+  }, [
+    curve.length,
+    suggestions.length,
+    computedSuggestions.length,
+    customSuggestions.length,
+    eqStrategyId,
+    activeToneProfile.label,
+    eqBandCount,
+  ]);
 
   const presetText = useMemo(
     () => buildPresetText(presetName, presetPreamp, suggestions),
@@ -529,6 +616,7 @@ export function useRoomEq() {
     setMeasurementRuns(runs);
     setAveragedRun(runs.length > 1 ? average : null);
     setCurve(averagedCurve);
+    setCustomSuggestions([]);
     setMeasurementMeta(baseMeta);
     setPresetStatus('');
     setStatus(
@@ -913,12 +1001,18 @@ export function useRoomEq() {
     setSuggestionQ,
     setSuggestionGain,
     toggleSuggestionEnabled,
+    addCustomBand,
+    removeCustomBand,
     setAllSuggestionQ,
     scaleAllSuggestionQ,
     resetSuggestionQ,
     eqBandCount,
     setEqBandCount,
     eqBandOptions: EQ_BAND_OPTIONS,
+    eqStrategyId,
+    setEqStrategyId,
+    eqStrategies: EQ_STRATEGIES,
+    filterOverlays,
     toneProfileId,
     setToneProfileId,
     activeToneProfile,

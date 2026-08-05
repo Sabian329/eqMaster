@@ -207,4 +207,4 @@ export const statLabelStyle = {
   fontSize: 'xs',
 } as const;
 
-export { buttonStyles, badgeStyles, tabStyles } from './components';
+export { buttonStyles, badgeStyles, tabStyles, setupSectionStyles, launchPanelStyles, sliderStyles } from './components';

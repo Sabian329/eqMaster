@@ -10,6 +10,7 @@ import {
   Text,
 } from '@chakra-ui/react';
 import type { EqBandCount, ToneProfileId } from '../../../config/toneProfiles';
+import type { EqStrategyId } from '../../../config/eqStrategies';
 import type { RoomEqState } from '../../../hooks/useRoomEq';
 import { SUGGESTION_Q_MAX, SUGGESTION_Q_MIN } from '../../../utils/suggestionQ';
 import { buttonStyles, fieldStyles } from '../../../theme';
@@ -24,6 +25,9 @@ interface EqToolbarProps {
     | 'eqBandCount'
     | 'setEqBandCount'
     | 'eqBandOptions'
+    | 'eqStrategyId'
+    | 'setEqStrategyId'
+    | 'eqStrategies'
     | 'toneProfileId'
     | 'setToneProfileId'
     | 'toneProfiles'
@@ -41,6 +45,9 @@ export function EqToolbar({ state }: EqToolbarProps) {
     eqBandCount,
     setEqBandCount,
     eqBandOptions,
+    eqStrategyId,
+    setEqStrategyId,
+    eqStrategies,
     toneProfileId,
     setToneProfileId,
     toneProfiles,
@@ -56,7 +63,7 @@ export function EqToolbar({ state }: EqToolbarProps) {
       alignItems="end"
       templateColumns={{
         base: '1fr',
-        lg: 'minmax(0,1fr) minmax(0,0.65fr) minmax(0,1.1fr) minmax(0,1fr)',
+        lg: 'minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.65fr) minmax(0,1.1fr) minmax(0,1fr)',
       }}
       borderBottomWidth="1px"
       borderColor="whiteAlpha.100"
@@ -75,6 +82,25 @@ export function EqToolbar({ state }: EqToolbarProps) {
             {toneProfiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profile.label}
+              </option>
+            ))}
+          </NativeSelect.Field>
+        </NativeSelect.Root>
+      </Field.Root>
+
+      <Field.Root>
+        <Field.Label {...fieldStyles.label} mb={1} fontSize="2xs">
+          EQ strategy
+        </Field.Label>
+        <NativeSelect.Root size="sm">
+          <NativeSelect.Field
+            {...fieldStyles.control}
+            value={eqStrategyId}
+            onChange={(e) => setEqStrategyId(e.target.value as EqStrategyId)}
+          >
+            {eqStrategies.map((strategy) => (
+              <option key={strategy.id} value={strategy.id}>
+                {strategy.label}
               </option>
             ))}
           </NativeSelect.Field>

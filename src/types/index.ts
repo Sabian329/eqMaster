@@ -1,6 +1,6 @@
 export type MeasurementCount = 1 | 2 | 3;
 
-export type SetupMode = 'simple' | 'advanced' | 'test';
+export type SetupMode = 'live' | 'test';
 
 export type MeasurementSessionStep =
   | 'mic-test'
@@ -37,6 +37,8 @@ export interface CurvePoint {
   db: number;
 }
 
+export type SuggestionSource = 'auto' | 'custom';
+
 export interface Suggestion {
   kind: SuggestionKind;
   frequency: number;
@@ -45,6 +47,8 @@ export interface Suggestion {
   q: number;
   note: string;
   enabled?: boolean;
+  source?: SuggestionSource;
+  customId?: string;
 }
 
 export interface MeasurementMeta {
