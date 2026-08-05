@@ -81,8 +81,15 @@ function retuneFilterGains(
 				const proposed = trial[index].gainDb + delta;
 				// Above 1 kHz keep shallow tonal cuts inside the intended gain bands.
 				if (trial[index].frequency >= 1_000 && trial[index].gainDb < 0) {
+					const strong = Boolean(trial[index].qualifiesForStrongBroadCut);
 					const floor =
-						trial[index].frequency < 5_000 ? -2.5 : -3.0;
+						trial[index].frequency < 5_000
+							? strong
+								? -4.0
+								: -2.5
+							: strong
+								? -3.5
+								: -3.0;
 					if (proposed < floor) continue;
 				}
 				trial[index].gainDb = clampFilterGain(
@@ -263,6 +270,7 @@ function tryAddBestFromPool(
 			!acceptsCandidateEvaluation(evaluation, {
 				frequency: filter.frequency,
 				reason: filter.reason,
+				gainDb: filter.gainDb,
 			})
 		) {
 			rejectionStats.rejectedCandidateCount += 1;

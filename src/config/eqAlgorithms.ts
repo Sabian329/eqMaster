@@ -23,7 +23,7 @@ export const EQ_ALGORITHMS: EqAlgorithmInfo[] = [
 		id: "v3",
 		label: "V3.1.0",
 		description:
-			"V3.1 — adaptive candidate pools, conservative high-frequency correction, broad overcut protection and final safety pass.",
+			"V3.1 — adaptive pools, coverage-aware broad cuts with null-safety, overcut protection and final safety pass.",
 	},
 ];
 

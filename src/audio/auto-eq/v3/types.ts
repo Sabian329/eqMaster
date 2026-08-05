@@ -34,6 +34,8 @@ export interface GeneratedEqFilter {
 	localImprovement?: number;
 	offBandDamage?: number;
 	weakenedBySafetyPass?: boolean;
+	positiveErrorCoverage?: number;
+	qualifiesForStrongBroadCut?: boolean;
 }
 
 export type TargetType = "flat" | "room" | "custom";
@@ -134,6 +136,12 @@ export interface TonalCandidate {
 	bandwidthOctaves: number;
 	reason: FilterReason;
 	reliability: number;
+	fromHz?: number;
+	toHz?: number;
+	positiveErrorCoverage?: number;
+	averageExcessDb?: number;
+	hasDominantDeepNull?: boolean;
+	qualifiesForStrongBroadCut?: boolean;
 }
 
 export interface ShelfCandidate {
@@ -142,6 +150,10 @@ export interface ShelfCandidate {
 	errorDb: number;
 	reason: FilterReason;
 	reliability: number;
+	positiveErrorCoverage?: number;
+	averageExcessDb?: number;
+	hasDominantDeepNull?: boolean;
+	qualifiesForStrongBroadCut?: boolean;
 }
 
 export interface FilterCandidate {
@@ -152,6 +164,8 @@ export interface FilterCandidate {
 	reason: FilterReason;
 	confidence: number;
 	pool: "resonance" | "tonal" | "shelf";
+	positiveErrorCoverage?: number;
+	qualifiesForStrongBroadCut?: boolean;
 }
 
 export interface AutoEqV31Diagnostics {

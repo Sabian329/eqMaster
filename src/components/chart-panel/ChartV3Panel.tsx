@@ -1,6 +1,10 @@
-import { Button, Collapsible, Flex, Stack, Text } from "@chakra-ui/react";
+import { Button, Collapsible, Stack, Text } from "@chakra-ui/react";
 import type { RoomEqState } from "../../hooks/useRoomEq";
-import { buttonStyles, ui } from "../../theme";
+import { ui } from "../../theme";
+import {
+	ChartRecalculateBar,
+	formatAutoEqProgressLabel,
+} from "./ChartRecalculateBar";
 
 interface ChartV3PanelProps {
 	state: Pick<
@@ -34,38 +38,15 @@ export function ChartV3Panel({ state }: ChartV3PanelProps) {
 
 	const v3 = autoEqV3Result?.v3;
 	const diagnostics = v3?.diagnostics;
-	const progressLabel = autoEqV3Progress
-		? `${autoEqV3Progress.stage} ${Math.round(autoEqV3Progress.progress * 100)}%`
-		: "Standard";
 
 	return (
-		<Stack
-			gap={0}
-			borderTopWidth="1px"
-			borderColor={ui.colors.border}
-			bg={ui.colors.chart}
-		>
-			<Flex justify="space-between" align="center" gap={3} px={3} py={2}>
-				<Text
-					fontSize="2xs"
-					color={ui.colors.textDim}
-					fontFamily={ui.fonts.mono}
-				>
-					{autoEqV3IsRunning
-						? `V3.1 · ${progressLabel}`
-						: `V3.1 · ${progressLabel}`}
-				</Text>
-				<Button
-					size="sm"
-					h="30px"
-					borderRadius="2px"
-					{...buttonStyles.primary}
-					disabled={autoEqV3IsRunning}
-					onClick={recalculateV3AutoEq}
-				>
-					Recalculate
-				</Button>
-			</Flex>
+		<Stack gap={0} bg={ui.colors.chart}>
+			<ChartRecalculateBar
+				versionLabel="V3.1"
+				statusLabel={formatAutoEqProgressLabel(autoEqV3Progress)}
+				isRunning={autoEqV3IsRunning}
+				onRecalculate={recalculateV3AutoEq}
+			/>
 
 			{v3 && (
 				<Collapsible.Root defaultOpen={false}>

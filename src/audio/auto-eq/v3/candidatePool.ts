@@ -9,6 +9,7 @@ import {
 	TONAL_Q_VALUES,
 	V3_CANDIDATE_BUDGET,
 } from "./constants";
+import { getBroadCorrectionStrength } from "./broadRegion";
 import { getCorrectionStrength } from "./correctionStrength";
 import { clampFilterGain, clampFilterQ } from "./frequencyLimits";
 import { clamp } from "./math";
@@ -194,8 +195,19 @@ function shapeHighFrequencyTonalGain(
 	frequency: number,
 	rawGainDb: number,
 	toleratedErrorDb: number,
+	strongBroadCut = false,
 ): number {
 	if (rawGainDb >= 0 || toleratedErrorDb < 1.25) return rawGainDb;
+
+	// Strong broad excess (high positive coverage): allow deeper wide cuts.
+	if (strongBroadCut) {
+		if (frequency >= 1_000 && frequency < 5_000) {
+			return clamp(rawGainDb, -4.0, -1.5);
+		}
+		if (frequency >= 5_000) {
+			return clamp(rawGainDb, -3.5, -2.0);
+		}
+	}
 
 	// Mid HF: one shallow wide cut around 1.5–3 kHz band.
 	if (frequency >= 1_000 && frequency < 5_000) {
@@ -253,15 +265,20 @@ export function generateTonalPool(
 			candidateFrequency = clamp(candidateFrequency, 1_500, 3_000);
 		}
 
-		const strength = getCorrectionStrength(
-			candidateFrequency,
-			prepared.measurementCount,
-			segment.reliability,
-		);
+		const coverage = segment.positiveErrorCoverage ?? 0;
+		const strongBroadCut = Boolean(segment.qualifiesForStrongBroadCut);
+		const strength = strongBroadCut
+			? getBroadCorrectionStrength(coverage)
+			: getCorrectionStrength(
+					candidateFrequency,
+					prepared.measurementCount,
+					segment.reliability,
+				);
 		const shapedGain = shapeHighFrequencyTonalGain(
 			candidateFrequency,
 			-toleratedError * strength,
 			Math.abs(toleratedError),
+			strongBroadCut,
 		);
 		const baseGain = clampFilterGain(
 			shapedGain,
@@ -306,6 +323,8 @@ export function generateTonalPool(
 				reason: segment.reason,
 				confidence: segment.reliability,
 				pool: "tonal",
+				positiveErrorCoverage: coverage,
+				qualifiesForStrongBroadCut: strongBroadCut,
 			});
 		}
 	}
@@ -328,17 +347,22 @@ export function generateShelfPool(
 		);
 		if (Math.abs(toleratedError) < MIN_PROMINENCE_DB) continue;
 
-		const strength = getCorrectionStrength(
-			shelf.frequency,
-			prepared.measurementCount,
-			shelf.reliability,
-		);
+		const coverage = shelf.positiveErrorCoverage ?? 0;
+		const strongBroadCut = Boolean(shelf.qualifiesForStrongBroadCut);
+		const strength = strongBroadCut
+			? getBroadCorrectionStrength(coverage)
+			: getCorrectionStrength(
+					shelf.frequency,
+					prepared.measurementCount,
+					shelf.reliability,
+				);
 		const shapedGain =
 			shelf.type === "HS"
 				? shapeHighFrequencyTonalGain(
 						shelf.frequency,
 						-toleratedError * strength,
 						Math.abs(toleratedError),
+						strongBroadCut,
 					)
 				: -toleratedError * strength;
 		const gainDb = clampFilterGain(
@@ -370,6 +394,8 @@ export function generateShelfPool(
 			reason: shelf.reason,
 			confidence: shelf.reliability,
 			pool: "shelf",
+			positiveErrorCoverage: coverage,
+			qualifiesForStrongBroadCut: strongBroadCut,
 		});
 	}
 
@@ -429,6 +455,8 @@ export function candidateToFilter(
 		contributionPercent: 0,
 		affectedRange: { fromHz, toHz },
 		reason: candidate.reason,
+		positiveErrorCoverage: candidate.positiveErrorCoverage,
+		qualifiesForStrongBroadCut: candidate.qualifiesForStrongBroadCut,
 	};
 }
 
@@ -448,17 +476,18 @@ export function clampHighFrequencyTonalGain(
 
 	if (!isHfTonal || clone.gainDb >= 0) return clone;
 
+	const strong = Boolean(clone.qualifiesForStrongBroadCut);
 	if (clone.frequency >= 1_000 && clone.frequency < 5_000) {
 		clone.gainDb = clamp(
 			clone.gainDb,
-			MID_HF_TONAL_GAIN_DB.min,
-			MID_HF_TONAL_GAIN_DB.max,
+			strong ? -4.0 : MID_HF_TONAL_GAIN_DB.min,
+			strong ? -1.5 : MID_HF_TONAL_GAIN_DB.max,
 		);
 	} else if (clone.frequency >= 5_000 || clone.type === "HS") {
 		clone.gainDb = clamp(
 			clone.gainDb,
-			HIGH_HF_TONAL_GAIN_DB.min,
-			HIGH_HF_TONAL_GAIN_DB.max,
+			strong ? -3.5 : HIGH_HF_TONAL_GAIN_DB.min,
+			strong ? -2.0 : HIGH_HF_TONAL_GAIN_DB.max,
 		);
 	}
 

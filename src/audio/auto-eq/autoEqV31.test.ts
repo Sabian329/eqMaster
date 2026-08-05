@@ -21,6 +21,11 @@ import {
 	acceptsCandidateEvaluation,
 	type CandidateEvaluation,
 } from "./v3/candidateEvaluation";
+import {
+	acceptsBroadCutNullSafety,
+	getBroadCorrectionStrength,
+	regionQualifiesForStrongBroadCut,
+} from "./v3/broadRegion";
 import { getFrequencyLimits } from "./v3/frequencyLimits";
 import { getPreferredMaximumQ, getHighQPenaltyWeight } from "./v3/correctionStrength";
 import { getFilterResponseDb } from "./v3/biquadResponse";
@@ -323,13 +328,75 @@ describe("auto-eq V3.1 units", () => {
 			offBandDamage: 0.5,
 			broadOvercutBefore: 1,
 			broadOvercutAfter: 1,
+			broadImprovement: 2,
+			belowTargetDamage: 0.1,
 		};
 		expect(
 			acceptsCandidateEvaluation(evaluation, {
 				frequency: 3_000,
 				reason: "broad-tonal-error",
+				gainDb: -2,
 			}),
 		).toBe(false);
+	});
+
+	it("scales broad correction strength by positive-error coverage", () => {
+		expect(getBroadCorrectionStrength(0.79)).toBe(0.5);
+		expect(getBroadCorrectionStrength(0.8)).toBe(0.75);
+		expect(
+			regionQualifiesForStrongBroadCut({
+				bandwidthOctaves: 0.75,
+				positiveErrorCoverage: 0.72,
+				averageExcessDb: 2.1,
+				hasDominantDeepNull: false,
+			}),
+		).toBe(true);
+		expect(
+			regionQualifiesForStrongBroadCut({
+				bandwidthOctaves: 0.75,
+				positiveErrorCoverage: 0.72,
+				averageExcessDb: 2.1,
+				hasDominantDeepNull: true,
+			}),
+		).toBe(false);
+	});
+
+	it("rejects broad cuts that deepen below-target nulls too much", () => {
+		expect(acceptsBroadCutNullSafety(4, 1)).toBe(true);
+		expect(acceptsBroadCutNullSafety(4, 2)).toBe(false);
+
+		const evaluation: CandidateEvaluation = {
+			globalCostBefore: 10,
+			globalCostAfter: 9,
+			localCostBefore: 4,
+			localCostAfter: 3,
+			offBandCostBefore: 2,
+			offBandCostAfter: 2.01,
+			globalImprovement: 1,
+			localImprovement: 1,
+			offBandDamage: 0.01,
+			broadOvercutBefore: 1,
+			broadOvercutAfter: 1,
+			broadImprovement: 1,
+			belowTargetDamage: 1,
+		};
+		expect(
+			acceptsCandidateEvaluation(evaluation, {
+				frequency: 3_000,
+				reason: "broad-tonal-error",
+				gainDb: -2.5,
+			}),
+		).toBe(false);
+		expect(
+			acceptsCandidateEvaluation(
+				{ ...evaluation, broadImprovement: 3, belowTargetDamage: 1 },
+				{
+					frequency: 3_000,
+					reason: "broad-tonal-error",
+					gainDb: -2.5,
+				},
+			),
+		).toBe(true);
 	});
 
 	it("prefers wider high-frequency filters and penalizes high Q", () => {
@@ -409,6 +476,7 @@ describe("auto-eq V3.1 MOCK 9 behaviour", () => {
 
 		const broadCombined = smoothToBroad(result.combinedFilterResponse);
 		for (const point of broadCombined) {
+			// Strong broad-cut path may use up to about -4 / -3.5 dB locally.
 			if (point.frequency >= 1_000 && point.frequency < 5_000) {
 				expect(point.db).toBeGreaterThanOrEqual(-5.2);
 			}
@@ -416,7 +484,7 @@ describe("auto-eq V3.1 MOCK 9 behaviour", () => {
 				expect(point.db).toBeGreaterThanOrEqual(-4.2);
 			}
 			if (point.frequency >= 10_000) {
-				expect(point.db).toBeGreaterThanOrEqual(-3.2);
+				expect(point.db).toBeGreaterThanOrEqual(-3.6);
 			}
 		}
 

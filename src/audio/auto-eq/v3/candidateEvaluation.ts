@@ -1,4 +1,9 @@
 import { getFilterResponseDb } from "./biquadResponse";
+import {
+	acceptsBroadCutNullSafety,
+	computeBelowTargetDamage,
+	computeBroadImprovement,
+} from "./broadRegion";
 import { calculateTotalCost, computePredictedCurve } from "./costFunction";
 import {
 	computeBroadOvercutPenalty,
@@ -23,6 +28,8 @@ export interface CandidateEvaluation {
 	offBandDamage: number;
 	broadOvercutBefore: number;
 	broadOvercutAfter: number;
+	broadImprovement: number;
+	belowTargetDamage: number;
 }
 
 export interface CorrectionRegion {
@@ -187,6 +194,21 @@ export function evaluateCandidateAddition(
 		prepared.target,
 	);
 
+	const broadImprovement = computeBroadImprovement(
+		predictedBefore,
+		predictedAfter,
+		prepared.target,
+		prepared.reliability,
+		mask,
+	);
+	const belowTargetDamage = computeBelowTargetDamage(
+		predictedBefore,
+		predictedAfter,
+		prepared.target,
+		prepared.reliability,
+		mask,
+	);
+
 	return {
 		globalCostBefore,
 		globalCostAfter,
@@ -199,7 +221,17 @@ export function evaluateCandidateAddition(
 		offBandDamage: Math.max(0, offBandCostAfter - offBandCostBefore),
 		broadOvercutBefore,
 		broadOvercutAfter,
+		broadImprovement,
+		belowTargetDamage,
 	};
+}
+
+function isBroadCutReason(reason?: string): boolean {
+	return (
+		reason === "broad-tonal-error" ||
+		reason === "high-frequency-tilt" ||
+		reason === "low-frequency-tilt"
+	);
 }
 
 export function acceptsCandidateEvaluation(
@@ -207,6 +239,7 @@ export function acceptsCandidateEvaluation(
 	context?: {
 		frequency?: number;
 		reason?: string;
+		gainDb?: number;
 		minimumGlobalImprovement?: number;
 		maximumAllowedOffBandDamage?: number;
 		allowedOvercutIncrease?: number;
@@ -224,13 +257,24 @@ export function acceptsCandidateEvaluation(
 	const allowedOvercutIncrease =
 		context?.allowedOvercutIncrease ?? limits.allowedOvercutIncrease;
 
-	return (
+	const baseAccepted =
 		evaluation.globalImprovement > minimumGlobalImprovement &&
 		evaluation.localImprovement > 0 &&
 		evaluation.offBandDamage <= maximumAllowedOffBandDamage &&
 		evaluation.broadOvercutAfter <=
-			evaluation.broadOvercutBefore + allowedOvercutIncrease
-	);
+			evaluation.broadOvercutBefore + allowedOvercutIncrease;
+
+	if (!baseAccepted) return false;
+
+	// Broad cuts must improve above-target excess more than they deepen nulls.
+	if ((context?.gainDb ?? 0) < 0 && isBroadCutReason(context?.reason)) {
+		return acceptsBroadCutNullSafety(
+			evaluation.broadImprovement,
+			evaluation.belowTargetDamage,
+		);
+	}
+
+	return true;
 }
 
 export function overlapOctaves(

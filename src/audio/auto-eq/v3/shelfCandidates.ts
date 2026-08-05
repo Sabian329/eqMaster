@@ -1,4 +1,5 @@
 import { MIN_TONAL_ERROR_DB, MIN_TONAL_WIDTH_OCTAVES } from "./constants";
+import { analyzeBroadRegion } from "./broadRegion";
 import { applyTolerance, getTargetToleranceDb } from "./tolerance";
 import type { PreparedMeasurement, ShelfCandidate } from "./types";
 import { detectTonalCandidates } from "./tonalCandidates";
@@ -7,6 +8,7 @@ function detectHighFrequencyShelfFromBroad(
 	prepared: PreparedMeasurement,
 ): ShelfCandidate | null {
 	const { broad, target, reliability } = prepared;
+	const indices: number[] = [];
 	const points: { frequency: number; errorDb: number; reliability: number }[] =
 		[];
 
@@ -19,6 +21,7 @@ function detectHighFrequencyShelfFromBroad(
 			getTargetToleranceDb(frequency),
 		);
 		if (tolerated <= 0) continue;
+		indices.push(index);
 		points.push({
 			frequency,
 			errorDb: tolerated,
@@ -38,12 +41,24 @@ function detectHighFrequencyShelfFromBroad(
 
 	if (averageError < MIN_TONAL_ERROR_DB || widthOctaves < 0.75) return null;
 
+	const regionStats = analyzeBroadRegion(
+		prepared,
+		indices[0],
+		indices[indices.length - 1] + 1,
+	);
+
+	if (regionStats.hasDominantDeepNull) return null;
+
 	return {
 		type: "HS",
 		frequency: clampShelfFrequency(Math.sqrt(fromHz * toHz)),
 		errorDb: averageError,
 		reason: "high-frequency-tilt",
 		reliability: averageRel,
+		positiveErrorCoverage: regionStats.positiveErrorCoverage,
+		averageExcessDb: regionStats.averageExcessDb,
+		hasDominantDeepNull: regionStats.hasDominantDeepNull,
+		qualifiesForStrongBroadCut: regionStats.qualifiesForStrongBroadCut,
 	};
 }
 
@@ -74,6 +89,10 @@ export function detectShelfCandidates(
 				errorDb: segment.errorDb,
 				reason: segment.reason,
 				reliability: segment.reliability,
+				positiveErrorCoverage: segment.positiveErrorCoverage,
+				averageExcessDb: segment.averageExcessDb,
+				hasDominantDeepNull: segment.hasDominantDeepNull,
+				qualifiesForStrongBroadCut: segment.qualifiesForStrongBroadCut,
 			});
 		}
 
@@ -84,6 +103,10 @@ export function detectShelfCandidates(
 				errorDb: segment.errorDb,
 				reason: segment.reason,
 				reliability: segment.reliability,
+				positiveErrorCoverage: segment.positiveErrorCoverage,
+				averageExcessDb: segment.averageExcessDb,
+				hasDominantDeepNull: segment.hasDominantDeepNull,
+				qualifiesForStrongBroadCut: segment.qualifiesForStrongBroadCut,
 			});
 		}
 	}
