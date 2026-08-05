@@ -14,6 +14,8 @@
     "build:electron": "tsc -p tsconfig.electron.json && node scripts/rename-electron.cjs",
     "build": "npm run build:renderer && npm run build:electron",
     "lint": "oxlint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "dist": "npm run build && electron-builder --mac",
@@ -35,6 +37,7 @@
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
+    "vitest": "^3.2.7",
     "wait-on": "^8.0.3"
   },
   "build": {

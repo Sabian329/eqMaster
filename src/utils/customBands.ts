@@ -69,3 +69,13 @@ export function mergeSuggestions(
     (a, b) => a.frequency - b.frequency,
   );
 }
+
+export function withoutOverlaySuggestions(suggestions: Suggestion[]): Suggestion[] {
+  return suggestions.filter(
+    (item) =>
+      !(
+        item.source === 'custom' &&
+        (item.customId === 'eq-overlay-low' || item.customId === 'eq-overlay-high')
+      ),
+  );
+}

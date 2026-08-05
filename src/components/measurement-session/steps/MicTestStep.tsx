@@ -1,5 +1,6 @@
 import { Box, Button, Stack, Text } from '@chakra-ui/react';
 import type { RoomEqState } from '../../../hooks/useRoomEq';
+import { meterOptimalRangeLabel } from '../../../utils/format';
 import { buttonStyles } from '../../../theme';
 import { LevelMeter } from '../../shared';
 
@@ -20,8 +21,8 @@ export function MicTestStep({
     <>
       <Text fontSize="sm" color="gray.300" lineHeight="1.65">
         Optional: play pink noise at the sweep digital level while monitoring the microphone.
-        Adjust output volume and mic gain live — aim for a peak around −18 to −8 dBFS, then
-        continue.
+        Adjust output volume and mic gain live — aim for the green zone (
+        {meterOptimalRangeLabel()}), then continue.
       </Text>
 
       <Box

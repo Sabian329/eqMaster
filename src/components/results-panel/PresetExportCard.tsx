@@ -24,7 +24,6 @@ export function PresetExportCard({ state }: PresetExportCardProps) {
     exportPresetTxt,
     measurementRuns,
     averagedRun,
-    activeToneProfile,
     isMockMeasurement,
   } = state;
 
@@ -48,8 +47,7 @@ export function PresetExportCard({ state }: PresetExportCardProps) {
         measurementRuns.length > 1 &&
         averagedRun && (
           <Text fontSize="xs" color="brand.200" lineHeight="1.6" mb={3}>
-            Based on {measurementRuns.length} averaged measurements and{' '}
-            {activeToneProfile.label} tone target.
+            Based on {measurementRuns.length} averaged measurements and a flat reference target.
           </Text>
         )
       )}
@@ -64,7 +62,7 @@ export function PresetExportCard({ state }: PresetExportCardProps) {
           borderColor="whiteAlpha.200"
           color="gray.200"
         >
-              Name / Preamp / Filter / PK / Fc / Gain / Q
+              Name / Preamp / Filter / PK / Fc / Gain / BW Oct
         </Code>
         . Nulls export as <strong>OFF</strong>.
       </Text>

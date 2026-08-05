@@ -1,10 +1,8 @@
 import { Box, Card } from '@chakra-ui/react';
 import { panelStyles } from '../../theme';
 import { ChartEqEditor } from './chart-eq-editor';
-import { resolveChartFrequencyRange, resolveDisplayMeta } from './constants';
+import { resolveChartFrequencyRange } from './constants';
 import { ChartHeader } from './ChartHeader';
-import { ChartStatsGrid } from './ChartStatsGrid';
-import { VerificationPanel } from './VerificationPanel';
 import { FrequencyChart } from './frequency-chart';
 import type { ChartPanelProps } from './types';
 
@@ -14,10 +12,17 @@ export function ChartPanel({ state }: ChartPanelProps) {
     visibleChartSeries,
     isChartSeriesVisible,
     toggleChartSeriesVisibility,
-    showFilterOverlays,
+    showCorrectionFills,
+    toggleCorrectionFills,
     filterOverlays,
+    measurementMeta,
+    measurementRuns,
+    averagedRun,
   } = state;
-  const displayMeta = resolveDisplayMeta(state);
+  const displayMeta =
+    averagedRun?.meta ??
+    measurementRuns[measurementRuns.length - 1]?.meta ??
+    measurementMeta;
   const { fMin, fMax } = resolveChartFrequencyRange(
     chartSeries,
     displayMeta?.fMin ?? 40,
@@ -30,6 +35,9 @@ export function ChartPanel({ state }: ChartPanelProps) {
           chartSeries={chartSeries}
           isChartSeriesVisible={isChartSeriesVisible}
           onToggleChartSeries={toggleChartSeriesVisibility}
+          showCorrectionFills={showCorrectionFills}
+          onToggleCorrectionFills={toggleCorrectionFills}
+          hasCorrectionFills={filterOverlays.length > 0}
         />
       </Card.Header>
 
@@ -40,23 +48,19 @@ export function ChartPanel({ state }: ChartPanelProps) {
         bg="chart.bg"
         boxShadow="0 12px 32px rgba(0,0,0,.45)"
       >
-        <Box minH={{ base: '240px', md: '280px' }} position="relative">
+        <Box minH={{ base: '220px', md: '260px' }} position="relative">
           <FrequencyChart
             series={visibleChartSeries}
             fMin={fMin}
             fMax={fMax}
             suggestions={state.suggestions}
-            filterOverlays={showFilterOverlays ? filterOverlays : []}
+            filterOverlays={showCorrectionFills ? filterOverlays : []}
             onAddCustomBand={state.addCustomBand}
           />
         </Box>
 
-        <VerificationPanel state={state} />
-
         <ChartEqEditor state={state} />
       </Box>
-
-      <ChartStatsGrid displayMeta={displayMeta} />
     </Card.Root>
   );
 }

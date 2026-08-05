@@ -1,7 +1,11 @@
 import type { Suggestion, SuggestionKind } from '../types';
+import { qToBandwidthOctaves } from './format';
 
 export const SUGGESTION_Q_MIN = 0.3;
 export const SUGGESTION_Q_MAX = 12;
+
+export const SUGGESTION_BW_OCT_MIN = qToBandwidthOctaves(SUGGESTION_Q_MAX);
+export const SUGGESTION_BW_OCT_MAX = qToBandwidthOctaves(SUGGESTION_Q_MIN);
 
 export const SUGGESTION_GAIN_MIN = -25;
 export const SUGGESTION_GAIN_MAX = 25;

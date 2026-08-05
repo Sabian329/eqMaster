@@ -1,5 +1,8 @@
 import type { ChannelMode } from "../types";
 
+/** Fixed digital sweep amplitude — not exposed in the UI. */
+export const SWEEP_LEVEL_DB = -20;
+
 export type MeasurementPresetId = "room" | "studio" | "car";
 
 export interface MeasurementPreset {
@@ -29,7 +32,7 @@ export const MEASUREMENT_PRESETS: MeasurementPreset[] = [
 		fEnd: 20000,
 		duration: 10,
 		smoothing: 6,
-		level: -24,
+		level: SWEEP_LEVEL_DB,
 	},
 	{
 		id: "studio",
@@ -43,7 +46,7 @@ export const MEASUREMENT_PRESETS: MeasurementPreset[] = [
 		fEnd: 20000,
 		duration: 15,
 		smoothing: 24,
-		level: -24,
+		level: SWEEP_LEVEL_DB,
 	},
 	{
 		id: "car",
@@ -57,7 +60,7 @@ export const MEASUREMENT_PRESETS: MeasurementPreset[] = [
 		fEnd: 16000,
 		duration: 10,
 		smoothing: 6,
-		level: -22,
+		level: SWEEP_LEVEL_DB,
 	},
 ];
 

@@ -23,12 +23,11 @@ import type {
 } from '../types';
 import { buildPresetText } from '../utils/preset';
 import { downloadText, safePresetFilename } from '../utils/download';
-import { formatFrequency } from '../utils/format';
+import { formatFrequency, meterOptimalRangeLabel } from '../utils/format';
 import { averageCurves } from '../utils/averageCurves';
-import { createSuggestions } from '../utils/suggestions';
-import { suggestHeadroomPreampDb } from '../utils/perceptualEq';
+import { PRO_MAX_AUTO_BANDS, runAutoEqPipeline } from '../utils/autoEqBridge';
 import { sanitizeCurve } from '../utils/sanitizeCurve';
-import { applyToneTarget, buildTargetCurve } from '../utils/toneProfile';
+import { buildTargetCurve, FLAT_TARGET_LABEL } from '../utils/toneProfile';
 import { buildCorrectedCurve } from '../utils/correctedCurve';
 import {
   applySuggestionAdjustments,
@@ -41,28 +40,25 @@ import {
   createCustomSuggestion,
   isBandTooClose,
   mergeSuggestions,
+  withoutOverlaySuggestions,
 } from '../utils/customBands';
+import {
+  createOverlaySuggestions,
+  getEqShapePreset,
+  SOS_OVERLAY_BANDS,
+  type EqShapePresetId,
+} from '../config/eqShapePresets';
 import { runMockMeasurement, runMockVerification, createMockMeasurementRun } from '../utils/mockMeasurement';
 import {
   MEASUREMENT_PRESETS,
+  SWEEP_LEVEL_DB,
   type MeasurementPresetId,
 } from '../config/measurementPresets';
-import {
-  EQ_BAND_OPTIONS,
-  TONE_PROFILES,
-  getToneProfile,
-  type EqBandCount,
-  type ToneProfileId,
-} from '../config/toneProfiles';
-import {
-  EQ_STRATEGIES,
-  getEqStrategy,
-  type EqStrategyId,
-} from '../config/eqStrategies';
 import { bandColorForIndex } from '../config/bandColors';
 import type { FilterOverlay } from '../chart/drawFilterOverlays';
 
 const RUN_COLORS = ['#8ec5ff', '#55d68b', '#ffbf5a'];
+const AUTO_EQ_MAX_CORRECTION_HZ = 1000;
 
 function getDeviceStatusMessage(
   mediaPermissionGranted: boolean,
@@ -167,7 +163,6 @@ export function useRoomEq() {
   const [fEnd, setFEnd] = useState(20000);
   const [duration, setDuration] = useState(10);
   const [smoothing, setSmoothing] = useState(6);
-  const [level, setLevel] = useState(-24);
   const [measurementCount, setMeasurementCount] = useState<MeasurementCount>(1);
   const [safetyCheck, setSafetyCheck] = useState(false);
   const [activeMeasurementPresetId, setActiveMeasurementPresetId] =
@@ -191,9 +186,6 @@ export function useRoomEq() {
   const [measurementRuns, setMeasurementRuns] = useState<MeasurementRun[]>([]);
   const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
 
-  const [eqBandCount, setEqBandCount] = useState<EqBandCount>(8);
-  const [eqStrategyId, setEqStrategyId] = useState<EqStrategyId>('refined');
-  const [toneProfileId, setToneProfileId] = useState<ToneProfileId>('flat');
   const [setupMode, setSetupMode] = useState<SetupMode>('live');
 
   const isTestMode = setupMode === 'test';
@@ -216,6 +208,10 @@ export function useRoomEq() {
     Record<string, boolean>
   >({});
   const [customSuggestions, setCustomSuggestions] = useState<Suggestion[]>([]);
+  const [eqShapePreset, setEqShapePreset] = useState<EqShapePresetId | null>(null);
+  const [sosOverlayEnabled, setSosOverlayEnabled] = useState(false);
+  const sosOverlayEnabledRef = useRef(false);
+  sosOverlayEnabledRef.current = sosOverlayEnabled;
   const [removedSuggestionKeys, setRemovedSuggestionKeys] = useState<
     Record<string, true>
   >({});
@@ -317,21 +313,41 @@ export function useRoomEq() {
     ? !running && !meterActive && !sessionOpen
     : env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
 
-  const activeToneProfile = useMemo(
-    () => getToneProfile(toneProfileId),
-    [toneProfileId],
-  );
-
   const targetCurve = useMemo(() => {
     if (!curve.length) return [];
-    return buildTargetCurve(curve, toneProfileId);
-  }, [curve, toneProfileId]);
+    return buildTargetCurve(curve);
+  }, [curve]);
+
+  const autoEq = useMemo(() => {
+    if (!curve.length) return null;
+    try {
+      return runAutoEqPipeline(curve, {
+        sampleRate: measurementMeta?.sampleRate,
+        fStart,
+        fEnd,
+        maxFilters: PRO_MAX_AUTO_BANDS,
+        maxCorrectionFrequency: AUTO_EQ_MAX_CORRECTION_HZ,
+      });
+    } catch {
+      return null;
+    }
+  }, [
+    curve,
+    measurementMeta?.sampleRate,
+    fStart,
+    fEnd,
+  ]);
+
+  useEffect(() => {
+    if (autoEq) {
+      setPresetPreamp(autoEq.preampDb);
+    }
+  }, [autoEq]);
 
   const computedSuggestions = useMemo((): Suggestion[] => {
     if (!curve.length) return [];
-    const adjustedCurve = applyToneTarget(curve, activeToneProfile);
-    return createSuggestions(adjustedCurve, eqBandCount, eqStrategyId);
-  }, [curve, activeToneProfile, eqBandCount, eqStrategyId]);
+    return autoEq?.suggestions ?? [];
+  }, [curve, autoEq]);
 
   const suggestionSignature = useMemo(
     () =>
@@ -346,7 +362,25 @@ export function useRoomEq() {
     setSuggestionGainOverrides({});
     setSuggestionEnabledOverrides({});
     setRemovedSuggestionKeys({});
-  }, [suggestionSignature]);
+
+    setCustomSuggestions((previous) => {
+      const withoutOverlays = withoutOverlaySuggestions(previous);
+      if (!sosOverlayEnabledRef.current) return withoutOverlays;
+      return [
+        ...withoutOverlays,
+        ...createOverlaySuggestions(SOS_OVERLAY_BANDS),
+      ].sort((a, b) => a.frequency - b.frequency);
+    });
+
+    if (eqShapePreset && eqShapePreset !== 'auto') {
+      const config = getEqShapePreset(eqShapePreset);
+      const nextQ: Record<string, number> = {};
+      for (const item of computedSuggestions) {
+        nextQ[suggestionKey(item)] = clampSuggestionQ(item.q * config.qScale);
+      }
+      setSuggestionQOverrides(nextQ);
+    }
+  }, [suggestionSignature, eqShapePreset, computedSuggestions]);
 
   const activeComputedSuggestions = useMemo(
     () =>
@@ -355,6 +389,25 @@ export function useRoomEq() {
       ),
     [computedSuggestions, removedSuggestionKeys],
   );
+
+  const applyEqShapePreset = useCallback((preset: EqShapePresetId) => {
+    setEqShapePreset(preset);
+  }, []);
+
+  const toggleSosOverlay = useCallback(() => {
+    setSosOverlayEnabled((previous) => {
+      const next = !previous;
+      setCustomSuggestions((custom) => {
+        const withoutOverlays = withoutOverlaySuggestions(custom);
+        if (!next) return withoutOverlays;
+        return [
+          ...withoutOverlays,
+          ...createOverlaySuggestions(SOS_OVERLAY_BANDS),
+        ].sort((a, b) => a.frequency - b.frequency);
+      });
+      return next;
+    });
+  }, []);
 
   const mergedSuggestions = useMemo(
     () => mergeSuggestions(activeComputedSuggestions, customSuggestions),
@@ -546,9 +599,9 @@ export function useRoomEq() {
     if (targetCurve.length) {
       overlays.push({
         id: 'target',
-        label: activeToneProfile.label,
+        label: FLAT_TARGET_LABEL,
         curve: targetCurve,
-        color: '#55d68b',
+        color: '#f0f2f5',
         lineWidth: 1.6,
         alpha: 0.95,
         dash: [7, 6],
@@ -584,7 +637,7 @@ export function useRoomEq() {
     targetCurve,
     correctedCurve,
     verificationCurve,
-    activeToneProfile.label,
+    FLAT_TARGET_LABEL,
   ]);
 
   const isChartSeriesVisible = useCallback(
@@ -592,56 +645,31 @@ export function useRoomEq() {
     [chartSeriesHidden],
   );
 
+  const visibleChartSeries = useMemo(
+    () =>
+      chartSeries.filter(
+        (series) =>
+          series.id === 'target' || chartSeriesHidden[series.id] !== true,
+      ),
+    [chartSeries, chartSeriesHidden],
+  );
+
+  const showCorrectionFills = chartSeriesHidden.correctionFills !== true;
+
+  const toggleCorrectionFills = useCallback(() => {
+    setChartSeriesHidden((previous) => ({
+      ...previous,
+      correctionFills: previous.correctionFills !== true,
+    }));
+  }, []);
+
   const toggleChartSeriesVisibility = useCallback((id: string) => {
+    if (id === 'target') return;
     setChartSeriesHidden((previous) => ({
       ...previous,
       [id]: previous[id] !== true,
     }));
   }, []);
-
-  const visibleChartSeries = useMemo(
-    () => chartSeries.filter((series) => chartSeriesHidden[series.id] !== true),
-    [chartSeries, chartSeriesHidden],
-  );
-
-  const showFilterOverlays = chartSeriesHidden.corrected !== true;
-
-  const eqSummary = useMemo(() => {
-    if (!curve.length) return '';
-    if (!suggestions.length) {
-      if (Object.keys(removedSuggestionKeys).length > 0) {
-        return 'No EQ bands — click the chart to add a band.';
-      }
-      return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
-    }
-    const autoCount = suggestions.filter((item) => item.source !== 'custom').length;
-    const customCount = suggestions.filter((item) => item.source === 'custom').length;
-    const total = suggestions.length;
-    if (!total) {
-      return `No filters matched the ${activeToneProfile.label} target — preset will contain only name and preamp.`;
-    }
-    const customSuffix =
-      customCount > 0
-        ? ` (${autoCount} auto + ${customCount} custom)`
-        : '';
-    const strategyLabel = getEqStrategy(eqStrategyId).label;
-    let summary = `${total} filter${total > 1 ? 's' : ''} · ${strategyLabel} · ${activeToneProfile.label} (max ${eqBandCount} auto bands)${customSuffix}.`;
-    if (eqStrategyId === 'refined') {
-      const preampHint = suggestHeadroomPreampDb(suggestions);
-      if (preampHint !== null) {
-        summary += ` Suggested preamp ${preampHint.toFixed(1)} dB for boost headroom.`;
-      }
-    }
-    return summary;
-  }, [
-    curve.length,
-    suggestions.length,
-    suggestions,
-    removedSuggestionKeys,
-    eqStrategyId,
-    activeToneProfile.label,
-    eqBandCount,
-  ]);
 
   const presetText = useMemo(
     () => buildPresetText(presetName, presetPreamp, suggestions),
@@ -669,7 +697,7 @@ export function useRoomEq() {
         fMax: fEnd,
         durationSeconds: duration,
         smoothing,
-        levelDb: level,
+        levelDb: SWEEP_LEVEL_DB,
         calibration,
         inputLabel,
         outputLabel,
@@ -685,7 +713,6 @@ export function useRoomEq() {
       fEnd,
       duration,
       smoothing,
-      level,
       calibration,
     ],
   );
@@ -737,7 +764,7 @@ export function useRoomEq() {
         fMax: fEnd,
         smoothing,
         durationSeconds: duration,
-        levelDb: level,
+        levelDb: SWEEP_LEVEL_DB,
         channel,
         runIndex,
         inputLabel,
@@ -761,7 +788,6 @@ export function useRoomEq() {
     fEnd,
     fStart,
     getDeviceLabels,
-    level,
     measurementCount,
     smoothing,
   ]);
@@ -845,13 +871,13 @@ export function useRoomEq() {
     await levelTestRef.current?.stop();
     setStatus('Starting level check…', 0);
     const session = await startLevelTest(inputDeviceId, outputDeviceId, setMeterDb, {
-      levelDb: level,
+      levelDb: SWEEP_LEVEL_DB,
       channel,
     });
     levelTestRef.current = session;
     setMeterActive(true);
     setStatus(
-      'Pink noise is playing at sweep level — adjust output volume and mic gain. Aim for −18 to −8 dBFS.',
+      `Pink noise is playing at sweep level — adjust output volume and mic gain. Aim for the green zone (${meterOptimalRangeLabel()}).`,
       0,
     );
   };
@@ -889,7 +915,7 @@ export function useRoomEq() {
   const handleSessionStartMeter = async () => {
     await sessionMeterRef.current?.stop();
     const session = await startLevelTest(inputDeviceId, outputDeviceId, setSessionMeterDb, {
-      levelDb: level,
+      levelDb: SWEEP_LEVEL_DB,
       channel,
     });
     sessionMeterRef.current = session;
@@ -916,7 +942,7 @@ export function useRoomEq() {
               fMax: fEnd,
               smoothing,
               durationSeconds: duration,
-              levelDb: level,
+              levelDb: SWEEP_LEVEL_DB,
               channel,
               runIndex,
               inputLabel,
@@ -1005,7 +1031,7 @@ export function useRoomEq() {
             fMax: fEnd,
             smoothing,
             durationSeconds: duration,
-            levelDb: level,
+            levelDb: SWEEP_LEVEL_DB,
             channel,
             runIndex: 1,
             inputLabel,
@@ -1027,7 +1053,7 @@ export function useRoomEq() {
           fMax: fEnd,
           durationSeconds: duration,
           smoothing,
-          levelDb: level,
+          levelDb: SWEEP_LEVEL_DB,
           calibration,
           inputLabel,
           outputLabel,
@@ -1057,7 +1083,6 @@ export function useRoomEq() {
     fEnd,
     smoothing,
     duration,
-    level,
     channel,
     suggestions,
     presetPreamp,
@@ -1090,8 +1115,7 @@ export function useRoomEq() {
           meta: measurementMeta,
           curve,
           suggestions,
-          toneProfileId,
-          eqBandCount,
+          eqMode: 'pro-thick-flat',
           runs: measurementRuns,
           average: averagedRun,
         },
@@ -1133,7 +1157,6 @@ export function useRoomEq() {
     setFEnd(preset.fEnd);
     setDuration(preset.duration);
     setSmoothing(preset.smoothing);
-    setLevel(preset.level);
   }, []);
 
   return {
@@ -1157,8 +1180,6 @@ export function useRoomEq() {
     setDuration,
     smoothing,
     setSmoothing,
-    level,
-    setLevel,
     measurementCount,
     setMeasurementCount,
     safetyCheck,
@@ -1189,18 +1210,11 @@ export function useRoomEq() {
     setAllSuggestionQ,
     scaleAllSuggestionQ,
     resetSuggestionQ,
-    eqBandCount,
-    setEqBandCount,
-    eqBandOptions: EQ_BAND_OPTIONS,
-    eqStrategyId,
-    setEqStrategyId,
-    eqStrategies: EQ_STRATEGIES,
+    eqShapePreset,
+    applyEqShapePreset,
+    sosOverlayEnabled,
+    toggleSosOverlay,
     filterOverlays,
-    toneProfileId,
-    setToneProfileId,
-    activeToneProfile,
-    toneProfiles: TONE_PROFILES,
-    eqSummary,
     targetCurve,
     measurementMeta,
     measurementRuns,
@@ -1209,7 +1223,8 @@ export function useRoomEq() {
     visibleChartSeries,
     isChartSeriesVisible,
     toggleChartSeriesVisibility,
-    showFilterOverlays,
+    showCorrectionFills,
+    toggleCorrectionFills,
     verificationCurve,
     verificationMeta,
     verificationRunning,

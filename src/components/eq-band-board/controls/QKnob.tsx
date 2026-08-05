@@ -1,9 +1,20 @@
 import { Box, Slider, Stack, Text } from '@chakra-ui/react';
-import { SUGGESTION_Q_MAX, SUGGESTION_Q_MIN } from '../../../utils/suggestionQ';
+import {
+  bandwidthOctavesToQ,
+  compactNumber,
+  qToBandwidthOctaves,
+} from '../../../utils/format';
+import {
+  SUGGESTION_BW_OCT_MAX,
+  SUGGESTION_BW_OCT_MIN,
+} from '../../../utils/suggestionQ';
 import type { QKnobProps } from '../types';
 
 export function QKnob({ value, onChange, compact = false }: QKnobProps) {
-  const fraction = (value - SUGGESTION_Q_MIN) / (SUGGESTION_Q_MAX - SUGGESTION_Q_MIN);
+  const bandwidthOctaves = qToBandwidthOctaves(value);
+  const fraction =
+    (bandwidthOctaves - SUGGESTION_BW_OCT_MIN) /
+    (SUGGESTION_BW_OCT_MAX - SUGGESTION_BW_OCT_MIN);
   const angle = -135 + fraction * 270;
   const knobSize = compact ? '40px' : '52px';
   const pointerHeight = compact ? '14px' : '18px';
@@ -39,11 +50,13 @@ export function QKnob({ value, onChange, compact = false }: QKnobProps) {
         />
       </Box>
       <Slider.Root
-        min={SUGGESTION_Q_MIN}
-        max={SUGGESTION_Q_MAX}
-        step={0.05}
-        value={[value]}
-        onValueChange={(details) => onChange(details.value[0])}
+        min={SUGGESTION_BW_OCT_MIN}
+        max={SUGGESTION_BW_OCT_MAX}
+        step={0.01}
+        value={[bandwidthOctaves]}
+        onValueChange={(details) =>
+          onChange(bandwidthOctavesToQ(details.value[0]))
+        }
         size="sm"
         w="full"
       >
@@ -55,7 +68,7 @@ export function QKnob({ value, onChange, compact = false }: QKnobProps) {
         </Slider.Control>
       </Slider.Root>
       <Text fontSize="2xs" color="gray.400" fontVariantNumeric="tabular-nums">
-        Q: {value.toFixed(2)}
+        Oct {compactNumber(bandwidthOctaves, 3)}
       </Text>
     </Stack>
   );

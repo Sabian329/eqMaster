@@ -12,9 +12,10 @@ import {
 } from '@chakra-ui/react';
 import type { MeasurementCount } from '../../../types';
 import type { RoomEqState } from '../../../hooks/useRoomEq';
+import { meterOptimalRangeLabel } from '../../../utils/format';
 import { badgeStyles, buttonStyles, fieldStyles, setupSectionStyles } from '../../../theme';
-import { FilePicker, FormHelper, FormLabel, LevelMeter, LevelSlider } from '../../shared';
-import { formatLevelLabel, MEASUREMENT_COUNT_OPTIONS } from '../constants';
+import { FilePicker, FormHelper, FormLabel, LevelMeter } from '../../shared';
+import { MEASUREMENT_COUNT_OPTIONS } from '../constants';
 
 interface SessionSettingsSectionProps {
   state: RoomEqState;
@@ -22,8 +23,7 @@ interface SessionSettingsSectionProps {
 }
 
 export function SessionSettingsSection({ state, isTestMode }: SessionSettingsSectionProps) {
-  const { measurementCount, setMeasurementCount, level, setLevel } = state;
-  const levelLabel = formatLevelLabel(level);
+  const { measurementCount, setMeasurementCount } = state;
 
   return (
     <SimpleGrid {...setupSectionStyles.fieldGrid}>
@@ -50,33 +50,6 @@ export function SessionSettingsSection({ state, isTestMode }: SessionSettingsSec
             : 'Run multiple sweeps and average — reduces noise and seat-to-seat variation.'}
         </FormHelper>
       </Field.Root>
-
-      <Box {...setupSectionStyles.insetPanel}>
-        <Flex justify="space-between" align="center" mb={4} gap={3} flexWrap="wrap">
-          <Stack gap={0.5}>
-            <Text fontSize="sm" fontWeight="semibold" color="gray.100" letterSpacing="-0.01em">
-              Sweep digital level
-            </Text>
-            <Text fontSize="xs" color="gray.500">
-              {isTestMode
-                ? 'Stored in mock metadata only.'
-                : 'Relative dBFS — not calibrated SPL.'}
-            </Text>
-          </Stack>
-          <Badge {...badgeStyles.info} fontSize="sm" px={2.5}>
-            {levelLabel}
-          </Badge>
-        </Flex>
-        <LevelSlider
-          min={-36}
-          max={-6}
-          step={1}
-          value={level}
-          onChange={setLevel}
-          minLabel="−36 dB"
-          maxLabel="−6 dB"
-        />
-      </Box>
     </SimpleGrid>
   );
 }
@@ -127,7 +100,7 @@ export function CalibrationLevelSection({
             <Text fontSize="xs" color="gray.500" lineHeight="1.55">
               {isTestMode
                 ? 'Unavailable in test mode — no live audio.'
-                : 'Pink noise at sweep level with live mic meter. Aim for the green zone (−18…−8 dBFS).'}
+                : `Pink noise at sweep level with live mic meter. Aim for the green zone (${meterOptimalRangeLabel()}).`}
             </Text>
           </Stack>
           {!meterActive ? (
@@ -177,8 +150,7 @@ export function TestLoadedPanel({ state }: TestLoadedPanelProps) {
         Test measurement loaded
       </Text>
       <Text fontSize="xs" color="gray.500" lineHeight="1.6" mb={3}>
-        Adjust EQ on the chart below — tone target, band count, and filters update the After
-        EQ curve in real time.
+        Adjust EQ on the chart below — filters and preamp update the After EQ curve in real time.
       </Text>
       <HStack gap={2} flexWrap="wrap">
         <Button

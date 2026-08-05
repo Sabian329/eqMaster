@@ -14,9 +14,15 @@ export function formatFrequency(value: number): string {
 
 export const METER_DB_MIN = -60;
 export const METER_DB_MAX = 0;
-/** Recommended mic peak window for room measurements. */
-export const METER_OPTIMAL_MIN_DB = -18;
-export const METER_OPTIMAL_MAX_DB = -8;
+/** Mic peak window for a reliable sweep — quiet rooms OK, leave headroom before clip. */
+export const METER_OPTIMAL_MIN_DB = -24;
+export const METER_OPTIMAL_MAX_DB = -6;
+
+export function meterOptimalRangeLabel(): string {
+  const formatBound = (db: number): string =>
+    `${db <= 0 ? '−' : '+'}${Math.abs(db)}`;
+  return `${formatBound(METER_OPTIMAL_MIN_DB)}…${formatBound(METER_OPTIMAL_MAX_DB)} dBFS`;
+}
 
 export function dbToMeterPercent(db: number): number {
   if (!Number.isFinite(db)) return 0;
@@ -39,4 +45,13 @@ export function compactNumber(value: number, decimals = 2): string {
 export function qToBandwidthOctaves(q: number): number {
   const safeQ = Math.max(0.05, Number(q) || 1);
   return (2 * Math.asinh(1 / (2 * safeQ))) / Math.LN2;
+}
+
+export function bandwidthOctavesToQ(bandwidthOctaves: number): number {
+  const safeBandwidth = Math.max(0.05, Number(bandwidthOctaves) || 1);
+  return 1 / (2 * Math.sinh((safeBandwidth * Math.LN2) / 2));
+}
+
+export function formatBandwidthOctaves(q: number, decimals = 3): string {
+  return compactNumber(qToBandwidthOctaves(q), decimals);
 }

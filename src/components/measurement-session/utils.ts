@@ -1,4 +1,5 @@
 import type { MeasurementSessionStep } from '../../types';
+import { meterOptimalRangeLabel } from '../../utils/format';
 
 export interface MeasurementSessionModalProps {
   state: import('../../hooks/useRoomEq').RoomEqState;
@@ -38,7 +39,7 @@ export function getSessionStepDescription(
 ): string {
   switch (sessionStep) {
     case 'mic-test':
-      return 'Optional: play pink noise at the sweep digital level while monitoring the microphone. Adjust output volume and mic gain live — aim for a peak around −18 to −8 dBFS, then continue.';
+      return `Optional: play pink noise at the sweep digital level while monitoring the microphone. Adjust output volume and mic gain live — aim for the green zone (${meterOptimalRangeLabel()}), then continue.`;
     case 'ready':
       return isTestMode
         ? 'Start a mock run to preview the chart, EQ suggestions, and preset export.'

@@ -1,5 +1,4 @@
 import type { AnalysisResult, CurvePoint } from '../types';
-import { createSuggestions } from '../utils/suggestions';
 import { sanitizeCurve } from '../utils/sanitizeCurve';
 
 interface WorkerInput {
@@ -221,11 +220,10 @@ function analyze(
   self.postMessage({
     type: 'progress',
     value: 97,
-    label: 'Finding peaks and dips…',
+    label: 'Finalizing curve…',
   });
-  const suggestions = createSuggestions(cleanedCurve);
 
-  return { curve: cleanedCurve, suggestions, fftSize: n, normalization };
+  return { curve: cleanedCurve, suggestions: [], fftSize: n, normalization };
 }
 
 self.onmessage = (event: MessageEvent<WorkerInput>) => {
