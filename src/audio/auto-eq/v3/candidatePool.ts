@@ -6,7 +6,9 @@ import {
 	TONAL_Q_VALUES,
 	V3_CANDIDATE_BUDGET,
 } from "./constants";
+import { getCorrectionStrength } from "./correctionStrength";
 import { clampFilterGain, clampFilterQ } from "./frequencyLimits";
+import { applyTolerance, getTargetToleranceDb } from "./tolerance";
 import {
 	canBoostAtFrequency,
 	clampFrequencyToOptions,
@@ -33,6 +35,22 @@ export function createFilterId(): string {
 	return `v3-filter-${candidateCounter}`;
 }
 
+function findNearestDb(
+	points: { frequency: number; db: number }[],
+	frequency: number,
+): number {
+	let best = points[0]?.db ?? 0;
+	let bestDistance = Number.POSITIVE_INFINITY;
+	for (const point of points) {
+		const distance = Math.abs(Math.log2(point.frequency / frequency));
+		if (distance < bestDistance) {
+			bestDistance = distance;
+			best = point.db;
+		}
+	}
+	return best;
+}
+
 function createResonanceVariants(
 	frequency: number,
 	baseGainDb: number,
@@ -41,8 +59,13 @@ function createResonanceVariants(
 	confidence: number,
 	prepared: PreparedMeasurement,
 	options: AutoEqV3Options,
+	highConfidenceRepeatedResonance: boolean,
 ): FilterCandidate[] {
 	const candidates: FilterCandidate[] = [];
+	const limitOptions = {
+		measurementCount: prepared.measurementCount,
+		highConfidenceRepeatedResonance,
+	};
 
 	for (const octaveOffset of FREQUENCY_OFFSETS_OCTAVES) {
 		const candidateFrequency = clampFrequencyToOptions(
@@ -64,12 +87,18 @@ function createResonanceVariants(
 				candidateFrequency,
 				baseGainDb,
 				"PK",
-				reason === "repeated-resonance",
+				highConfidenceRepeatedResonance,
+				limitOptions,
 			);
 
 			for (const gainMultiplier of GAIN_MULTIPLIERS) {
 				const rawGain = baseGainDb * gainMultiplier;
-				const gainDb = clampFilterGain(rawGain, candidateFrequency, "PK");
+				const gainDb = clampFilterGain(
+					rawGain,
+					candidateFrequency,
+					"PK",
+					limitOptions,
+				);
 				if (Math.abs(gainDb) < 0.25) continue;
 
 				candidates.push({
@@ -98,20 +127,38 @@ export function generateResonancePool(
 	for (const resonance of resonances) {
 		if (resonance.isPotentialNull) continue;
 
-		const measuredError =
-			prepared.detailed.find(
-				(point) =>
-					Math.abs(Math.log2(point.frequency / resonance.frequency)) < 1 / 48,
-			)?.db ?? 0;
-		const targetDb =
-			prepared.target.find(
-				(point) =>
-					Math.abs(Math.log2(point.frequency / resonance.frequency)) < 1 / 48,
-			)?.db ?? 0;
-		const excess = measuredError - targetDb;
-		if (excess < MIN_PROMINENCE_DB) continue;
+		const measuredDb = findNearestDb(prepared.detailed, resonance.frequency);
+		const targetDb = findNearestDb(prepared.target, resonance.frequency);
+		const rawError = measuredDb - targetDb;
+		// Keep more of the resonance prominence below 1 kHz; apply full tolerance above.
+		const toleranceDb =
+			resonance.frequency < 1_000
+				? Math.min(0.5, getTargetToleranceDb(resonance.frequency))
+				: getTargetToleranceDb(resonance.frequency);
+		const toleratedError = applyTolerance(rawError, toleranceDb);
+		if (toleratedError < MIN_PROMINENCE_DB && resonance.prominenceDb < MIN_PROMINENCE_DB)
+			continue;
+		const measuredErrorDb = Math.max(toleratedError, resonance.prominenceDb);
 
-		const cutGain = clampFilterGain(-excess * 0.75, resonance.frequency, "PK");
+		const strength = getCorrectionStrength(
+			resonance.frequency,
+			prepared.measurementCount,
+			resonance.reliability,
+		);
+		const desiredGainDb = -measuredErrorDb * strength;
+		const highConfidenceRepeated =
+			Boolean(resonance.isHighConfidenceRepeated) &&
+			prepared.measurementCount >= 3;
+		const cutGain = clampFilterGain(
+			desiredGainDb,
+			resonance.frequency,
+			"PK",
+			{
+				measurementCount: prepared.measurementCount,
+				highConfidenceRepeatedResonance: highConfidenceRepeated,
+			},
+		);
+
 		candidates.push(
 			...createResonanceVariants(
 				resonance.frequency,
@@ -121,6 +168,7 @@ export function generateResonancePool(
 				resonance.reliability,
 				prepared,
 				options,
+				highConfidenceRepeated,
 			),
 		);
 	}
@@ -134,6 +182,7 @@ export function generateTonalPool(
 	options: AutoEqV3Options,
 ): FilterCandidate[] {
 	const candidates: FilterCandidate[] = [];
+	const limitOptions = { measurementCount: prepared.measurementCount };
 
 	for (const segment of tonalSegments) {
 		if (
@@ -143,14 +192,33 @@ export function generateTonalPool(
 			continue;
 		}
 
+		const toleratedError = applyTolerance(
+			segment.errorDb,
+			getTargetToleranceDb(segment.frequency),
+		);
+		if (Math.abs(toleratedError) < MIN_PROMINENCE_DB) continue;
+
+		const strength = getCorrectionStrength(
+			segment.frequency,
+			prepared.measurementCount,
+			segment.reliability,
+		);
 		const baseGain = clampFilterGain(
-			-segment.errorDb * 0.65,
+			-toleratedError * strength,
 			segment.frequency,
 			"PK",
+			limitOptions,
 		);
 
 		for (const q of TONAL_Q_VALUES) {
-			const clampedQ = clampFilterQ(q, segment.frequency, baseGain, "PK");
+			const clampedQ = clampFilterQ(
+				q,
+				segment.frequency,
+				baseGain,
+				"PK",
+				false,
+				limitOptions,
+			);
 			const candidateFrequency = clampFrequencyToOptions(
 				segment.frequency,
 				options,
@@ -163,7 +231,12 @@ export function generateTonalPool(
 				continue;
 			}
 
-			const gainDb = clampFilterGain(baseGain, candidateFrequency, "PK");
+			const gainDb = clampFilterGain(
+				baseGain,
+				candidateFrequency,
+				"PK",
+				limitOptions,
+			);
 			if (Math.abs(gainDb) < 0.25) continue;
 
 			candidates.push({
@@ -187,12 +260,25 @@ export function generateShelfPool(
 	options: AutoEqV3Options,
 ): FilterCandidate[] {
 	const candidates: FilterCandidate[] = [];
+	const limitOptions = { measurementCount: prepared.measurementCount };
 
 	for (const shelf of shelves) {
+		const toleratedError = applyTolerance(
+			shelf.errorDb,
+			getTargetToleranceDb(shelf.frequency),
+		);
+		if (Math.abs(toleratedError) < MIN_PROMINENCE_DB) continue;
+
+		const strength = getCorrectionStrength(
+			shelf.frequency,
+			prepared.measurementCount,
+			shelf.reliability,
+		);
 		const gainDb = clampFilterGain(
-			-shelf.errorDb * (shelf.type === "LS" ? 0.55 : 0.5),
+			-toleratedError * strength,
 			shelf.frequency,
 			shelf.type,
+			limitOptions,
 		);
 
 		if (

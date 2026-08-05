@@ -33,6 +33,7 @@ export function ChartV3Panel({ state }: ChartV3PanelProps) {
 	}
 
 	const v3 = autoEqV3Result?.v3;
+	const diagnostics = v3?.diagnostics;
 	const progressLabel = autoEqV3Progress
 		? `${autoEqV3Progress.stage} ${Math.round(autoEqV3Progress.progress * 100)}%`
 		: "Standard";
@@ -44,15 +45,15 @@ export function ChartV3Panel({ state }: ChartV3PanelProps) {
 			borderColor={ui.colors.border}
 			bg={ui.colors.chart}
 		>
-			<Flex justify="flex-end" align="center" gap={3} px={3} py={2}>
+			<Flex justify="space-between" align="center" gap={3} px={3} py={2}>
 				<Text
 					fontSize="2xs"
 					color={ui.colors.textDim}
 					fontFamily={ui.fonts.mono}
 				>
 					{autoEqV3IsRunning
-						? `V3 · ${progressLabel}`
-						: `V3 · ${progressLabel}`}
+						? `V3.1 · ${progressLabel}`
+						: `V3.1 · ${progressLabel}`}
 				</Text>
 				<Button
 					size="sm"
@@ -82,7 +83,7 @@ export function ChartV3Panel({ state }: ChartV3PanelProps) {
 							px={3}
 							py={2}
 						>
-							V3 diagnostics
+							V3.1 diagnostics
 						</Button>
 					</Collapsible.Trigger>
 					<Collapsible.Content px={3} pb={3}>
@@ -92,23 +93,100 @@ export function ChartV3Panel({ state }: ChartV3PanelProps) {
 							color={ui.colors.textMuted}
 							fontFamily={ui.fonts.mono}
 						>
-							<Text>Filters used: {v3.filters.length}</Text>
 							<Text>
-								Candidates: {v3.candidateCount.total} (R{" "}
-								{v3.candidateCount.resonance} · T {v3.candidateCount.tonal} · S{" "}
-								{v3.candidateCount.shelf})
+								Filters before pruning:{" "}
+								{diagnostics?.filtersBeforePruning ?? v3.filtersBeforePruning}
 							</Text>
-							<Text>RMS before: {v3.weightedRmsBeforeDb.toFixed(2)} dB</Text>
-							<Text>RMS after: {v3.weightedRmsAfterDb.toFixed(2)} dB</Text>
-							<Text>Improvement: {v3.rmsImprovementPercent.toFixed(1)}%</Text>
-							<Text>Stop reason: {formatStopReason(v3.stopReason)}</Text>
-							<Text>Rejected nulls: {v3.rejectedNullCount}</Text>
-							<Text>Pruned filters: {v3.prunedFilterCount}</Text>
-							<Text>Merged filters: {v3.mergedFilterCount}</Text>
+							<Text>
+								Filters after pruning:{" "}
+								{diagnostics?.filtersAfterPruning ?? v3.filtersAfterPruning}
+							</Text>
+							<Text>
+								Filters after safety pass:{" "}
+								{diagnostics?.filtersAfterSafetyPass ??
+									v3.filtersAfterSafetyPass}
+							</Text>
+							<Text>
+								Resonance candidates:{" "}
+								{diagnostics?.resonanceCandidateCount ??
+									v3.candidateCount.resonance}
+							</Text>
+							<Text>
+								Tonal candidates:{" "}
+								{diagnostics?.tonalCandidateCount ?? v3.candidateCount.tonal}
+							</Text>
+							<Text>
+								Shelf candidates:{" "}
+								{diagnostics?.shelfCandidateCount ?? v3.candidateCount.shelf}
+							</Text>
+							<Text>
+								Rejected overcut candidates:{" "}
+								{diagnostics?.rejectedOvercutCount ?? v3.rejectedOvercutCount}
+							</Text>
+							<Text>
+								Weakened filters:{" "}
+								{diagnostics?.weakenedFilterCount ?? v3.weakenedFilterCount}
+							</Text>
+							<Text>
+								RMS before:{" "}
+								{(
+									diagnostics?.weightedRmsBeforeDb ?? v3.weightedRmsBeforeDb
+								).toFixed(2)}{" "}
+								dB
+							</Text>
+							<Text>
+								RMS after:{" "}
+								{(
+									diagnostics?.weightedRmsAfterDb ?? v3.weightedRmsAfterDb
+								).toFixed(2)}{" "}
+								dB
+							</Text>
+							<Text>
+								Broad RMS before:{" "}
+								{(diagnostics?.broadRmsBeforeDb ?? v3.broadRmsBeforeDb).toFixed(
+									2,
+								)}{" "}
+								dB
+							</Text>
+							<Text>
+								Broad RMS after:{" "}
+								{(diagnostics?.broadRmsAfterDb ?? v3.broadRmsAfterDb).toFixed(2)}{" "}
+								dB
+							</Text>
+							<Text>
+								Overcut area before:{" "}
+								{(
+									diagnostics?.overcutAreaBeforeDbOct ??
+									v3.overcutAreaBeforeDbOct
+								).toFixed(2)}
+							</Text>
+							<Text>
+								Overcut area after:{" "}
+								{(
+									diagnostics?.overcutAreaAfterDbOct ??
+									v3.overcutAreaAfterDbOct
+								).toFixed(2)}
+							</Text>
+							<Text>
+								Maximum broad overcut:{" "}
+								{(
+									diagnostics?.maximumBroadOvercutAfterDb ??
+									v3.maximumBroadOvercutAfterDb
+								).toFixed(2)}{" "}
+								dB
+							</Text>
 							<Text>
 								Maximum EQ boost: {v3.maximumCombinedBoostDb.toFixed(2)} dB
 							</Text>
+							<Text>
+								Maximum EQ cut:{" "}
+								{(
+									diagnostics?.maximumCombinedCutDb ?? v3.maximumCombinedCutDb
+								).toFixed(2)}{" "}
+								dB
+							</Text>
 							<Text>Preamp: {v3.preampDb.toFixed(2)} dB</Text>
+							<Text>Stop reason: {formatStopReason(v3.stopReason)}</Text>
 							<Text>Execution time: {v3.executionTimeMs.toFixed(0)} ms</Text>
 						</Stack>
 					</Collapsible.Content>

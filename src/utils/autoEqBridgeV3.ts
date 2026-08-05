@@ -1,7 +1,7 @@
 import type { CurvePoint, Suggestion } from "../types";
 import type { AutoEqResult, PeakingEqFilter } from "../audio/autoEq";
 import { generateAutoEqV3 } from "../audio/auto-eq/v3/autoEqV3";
-import { interpolateLogarithmically } from "../audio/auto-eq/v3/math";
+import { bandwidthOctavesFromQ, interpolateLogarithmically } from "../audio/auto-eq/v3/math";
 import type {
 	AutoEqV3Result,
 	GeneratedEqFilter,
@@ -25,6 +25,10 @@ function v3FilterToSuggestion(
 	const measuredDb = interpolateLogarithmically(measured, filter.frequency);
 	const targetDb = interpolateLogarithmically(target, filter.frequency);
 	const deviation = measuredDb - targetDb;
+	const widthOctaves = bandwidthOctavesFromQ(filter.q);
+	const localImprovement = filter.localImprovement?.toFixed(3) ?? "n/a";
+	const offBandDamage = filter.offBandDamage?.toFixed(3) ?? "n/a";
+	const safetyTag = filter.weakenedBySafetyPass ? " · Safety adjusted" : "";
 
 	return {
 		kind: filter.gainDb < 0 ? "cut" : "boost",
@@ -32,10 +36,16 @@ function v3FilterToSuggestion(
 		deviation,
 		gain: filter.gainDb,
 		q: filter.q,
-		note: `V3 Auto EQ — ${REASON_LABELS[filter.reason]} (conf ${Math.round(filter.confidence * 100)}%, +${filter.improvementPercent.toFixed(1)}%).`,
+		note: `V3.1 — ${REASON_LABELS[filter.reason]} · conf ${Math.round(filter.confidence * 100)}% · +${filter.improvementPercent.toFixed(1)}% · Q ${filter.q.toFixed(2)} (${widthOctaves.toFixed(2)} oct) · local ${localImprovement} · off-band ${offBandDamage}${safetyTag}`,
 		source: "auto",
 		enabled: filter.enabled,
 		filterType: filter.type,
+		safetyAdjusted: filter.weakenedBySafetyPass,
+		localImprovement: filter.localImprovement,
+		offBandDamage: filter.offBandDamage,
+		confidence: filter.confidence,
+		improvementPercent: filter.improvementPercent,
+		reason: filter.reason,
 	};
 }
 

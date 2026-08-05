@@ -6,14 +6,22 @@ import {
 } from './constants';
 import type { FilterReason, PreparedMeasurement, TonalCandidate } from './types';
 
-function regionHasLocalResonances(
+function regionHasBlockingLocalResonances(
   prepared: PreparedMeasurement,
   start: number,
   end: number,
+  centerFrequency: number,
 ): boolean {
+  // Above 1 kHz, broad excess often coexists with local peaks — allow tonal/shelf
+  // candidates and let overlap checks prevent duplicate correction.
+  if (centerFrequency >= 1_000) return false;
+
   const { narrowResidual } = prepared;
+  let peakCount = 0;
+  let samples = 0;
 
   for (let index = start + 1; index < end - 1; index += 1) {
+    samples += 1;
     const narrowDb = narrowResidual[index].db;
     if (narrowDb < MIN_PROMINENCE_DB) continue;
 
@@ -21,11 +29,11 @@ function regionHasLocalResonances(
       narrowDb > narrowResidual[index - 1].db &&
       narrowDb > narrowResidual[index + 1].db
     ) {
-      return true;
+      peakCount += 1;
     }
   }
 
-  return false;
+  return peakCount > 0 && peakCount / Math.max(samples, 1) > 0.08;
 }
 
 export function detectTonalCandidates(prepared: PreparedMeasurement): TonalCandidate[] {
@@ -68,7 +76,12 @@ export function detectTonalCandidates(prepared: PreparedMeasurement): TonalCandi
       bandwidthOctaves >= MIN_TONAL_WIDTH_OCTAVES &&
       Math.abs(averageError) >= MIN_TONAL_ERROR_DB &&
       averageRel >= MIN_RELIABILITY &&
-      !regionHasLocalResonances(prepared, start, end)
+      !regionHasBlockingLocalResonances(
+        prepared,
+        start,
+        end,
+        centerFrequency,
+      )
     ) {
       const reason: FilterReason =
         centerFrequency < 250

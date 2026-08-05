@@ -1,6 +1,17 @@
 import { ROOM_TARGET } from "./constants";
 import { interpolateLogarithmically, median } from "./math";
-import type { AutoEqV3Options, FrequencyPoint } from "./types";
+import type {
+	AutoEqV3Options,
+	FrequencyPoint,
+	ResolvedTarget,
+	TargetType,
+} from "./types";
+
+export function getTargetLabel(type: TargetType): string {
+	if (type === "flat") return "Flat target";
+	if (type === "room") return "Room target";
+	return "Custom target";
+}
 
 export const buildTargetPoints = (
 	options: AutoEqV3Options,
@@ -59,3 +70,21 @@ export const alignTargetToMeasurement = (
 		})),
 	};
 };
+
+export function resolveTarget(
+	measured: FrequencyPoint[],
+	options: AutoEqV3Options,
+): ResolvedTarget {
+	const rawTarget = buildTargetCurve(measured, options);
+	const { aligned, levelOffsetDb } = alignTargetToMeasurement(
+		measured,
+		rawTarget,
+	);
+
+	return {
+		type: options.targetType,
+		points: aligned,
+		levelOffsetDb,
+		label: getTargetLabel(options.targetType),
+	};
+}

@@ -101,10 +101,15 @@ export function detectResonanceCandidates(prepared: PreparedMeasurement): Resona
       singleFactor *
       frequencyWeight(frequency);
 
-    const reason: FilterReason =
-      measurementCount >= 3 && repeatabilityDb[index] < 1
-        ? 'repeated-resonance'
-        : 'local-resonance';
+    const isHighConfidenceRepeated =
+      measurementCount >= 3 &&
+      repeatabilityDb[index] < 1 &&
+      rel > 0.75 &&
+      singleFactor > 0.75;
+
+    const reason: FilterReason = isHighConfidenceRepeated
+      ? 'repeated-resonance'
+      : 'local-resonance';
 
     candidates.push({
       frequency,
@@ -115,6 +120,7 @@ export function detectResonanceCandidates(prepared: PreparedMeasurement): Resona
       reason,
       reliability: rel,
       isPotentialNull: false,
+      isHighConfidenceRepeated,
     });
   }
 

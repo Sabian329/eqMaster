@@ -31,9 +31,19 @@ export interface GeneratedEqFilter {
 	contributionPercent: number;
 	affectedRange: { fromHz: number; toHz: number };
 	reason: FilterReason;
+	localImprovement?: number;
+	offBandDamage?: number;
+	weakenedBySafetyPass?: boolean;
 }
 
 export type TargetType = "flat" | "room" | "custom";
+
+export interface ResolvedTarget {
+	type: TargetType;
+	points: FrequencyPoint[];
+	levelOffsetDb: number;
+	label: string;
+}
 
 export type AutoEqV3Warning =
 	| "single-measurement-high-frequency-correction"
@@ -68,14 +78,19 @@ export interface AutoEqV3Options {
 export interface AutoEqV3Progress {
 	stage:
 		| "preparing"
-		| "analyzing"
+		| "detecting-resonances"
+		| "detecting-tonal-errors"
 		| "generating-candidates"
 		| "selecting-filters"
 		| "optimizing"
-		| "regenerating"
+		| "regenerating-candidates"
 		| "pruning"
 		| "merging"
-		| "finalizing";
+		| "final-safety-pass"
+		| "finalizing"
+		// Legacy aliases kept for older UI progress strings during transition.
+		| "analyzing"
+		| "regenerating";
 	progress: number;
 	currentCost?: number;
 	filterCount?: number;
@@ -87,6 +102,7 @@ export interface PreparedMeasurement {
 	detailed: FrequencyPoint[];
 	broad: FrequencyPoint[];
 	target: FrequencyPoint[];
+	resolvedTarget: ResolvedTarget;
 	narrowResidual: FrequencyPoint[];
 	tonalError: FrequencyPoint[];
 	reliability: Float64Array;
@@ -95,6 +111,7 @@ export interface PreparedMeasurement {
 	usableBoostRange: { fromHz: number; toHz: number };
 	targetType: TargetType;
 	targetLevelOffsetDb: number;
+	targetLabel: string;
 	simGrid: FrequencyPoint[];
 	warnings: AutoEqV3Warning[];
 }
@@ -108,6 +125,7 @@ export interface ResonanceCandidate {
 	reason: FilterReason;
 	reliability: number;
 	isPotentialNull: boolean;
+	isHighConfidenceRepeated?: boolean;
 }
 
 export interface TonalCandidate {
@@ -136,6 +154,38 @@ export interface FilterCandidate {
 	pool: "resonance" | "tonal" | "shelf";
 }
 
+export interface AutoEqV31Diagnostics {
+	filtersBeforePruning: number;
+	filtersAfterPruning: number;
+	filtersAfterSafetyPass: number;
+	resonanceCandidateCount: number;
+	tonalCandidateCount: number;
+	shelfCandidateCount: number;
+	acceptedCandidateCount: number;
+	rejectedCandidateCount: number;
+	rejectedNullCount: number;
+	rejectedOffBandDamageCount: number;
+	rejectedOvercutCount: number;
+	prunedFilterCount: number;
+	weakenedFilterCount: number;
+	mergedFilterCount: number;
+	weightedRmsBeforeDb: number;
+	weightedRmsAfterDb: number;
+	broadRmsBeforeDb: number;
+	broadRmsAfterDb: number;
+	overcutAreaBeforeDbOct: number;
+	overcutAreaAfterDbOct: number;
+	excessAreaBeforeDbOct: number;
+	excessAreaAfterDbOct: number;
+	maximumBroadOvercutBeforeDb: number;
+	maximumBroadOvercutAfterDb: number;
+	maximumCombinedBoostDb: number;
+	maximumCombinedCutDb: number;
+	preampDb: number;
+	stopReason: AutoEqV3StopReason;
+	executionTimeMs: number;
+}
+
 export interface AutoEqV3Result {
 	filters: GeneratedEqFilter[];
 	preampDb: number;
@@ -146,6 +196,8 @@ export interface AutoEqV3Result {
 	combinedFilterResponse: FrequencyPoint[];
 	targetType: TargetType;
 	targetLevelOffsetDb: number;
+	targetLabel: string;
+	resolvedTarget: ResolvedTarget;
 	errorBefore: number;
 	errorAfter: number;
 	rmsErrorBeforeDb: number;
@@ -154,6 +206,15 @@ export interface AutoEqV3Result {
 	maximumErrorAfterDb: number;
 	weightedRmsBeforeDb: number;
 	weightedRmsAfterDb: number;
+	broadRmsBeforeDb: number;
+	broadRmsAfterDb: number;
+	overcutAreaBeforeDbOct: number;
+	overcutAreaAfterDbOct: number;
+	excessAreaBeforeDbOct: number;
+	excessAreaAfterDbOct: number;
+	maximumBroadOvercutBeforeDb: number;
+	maximumBroadOvercutAfterDb: number;
+	maximumCombinedCutDb: number;
 	rmsImprovementPercent: number;
 	candidateCount: {
 		resonance: number;
@@ -164,8 +225,14 @@ export interface AutoEqV3Result {
 	acceptedCandidateCount: number;
 	rejectedNullCount: number;
 	rejectedSimilarFilterCount: number;
+	rejectedOffBandDamageCount: number;
+	rejectedOvercutCount: number;
 	prunedFilterCount: number;
+	weakenedFilterCount: number;
 	mergedFilterCount: number;
+	filtersBeforePruning: number;
+	filtersAfterPruning: number;
+	filtersAfterSafetyPass: number;
 	maximumCombinedBoostDb: number;
 	confidence: number;
 	warnings: AutoEqV3Warning[];
@@ -173,16 +240,22 @@ export interface AutoEqV3Result {
 	regenerationCycles: number;
 	optimizationPasses: number;
 	executionTimeMs: number;
+	diagnostics: AutoEqV31Diagnostics;
 }
 
 export interface CostBreakdown {
 	total: number;
 	medianMeasurementCost: number;
 	worstMeasurementCost: number;
+	responseCost: number;
 	boostPenalty: number;
 	overlapPenalty: number;
 	cancellationPenalty: number;
 	qPenalty: number;
+	highQPenalty: number;
 	headroomPenalty: number;
 	filterCountPenalty: number;
+	offBandDamagePenalty: number;
+	broadOvercutPenalty: number;
+	broadCutLimitPenalty: number;
 }

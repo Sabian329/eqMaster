@@ -3,13 +3,22 @@ import { buildCandidatePools, resetCandidateCounter } from "./candidatePool";
 import {
 	computeCombinedFilterResponse,
 	computePredictedCurve,
+	calculateTotalCost,
 } from "./costFunction";
 import { mergeSimilarFilters } from "./filterMerging";
 import { pruneFilters } from "./filterPruning";
+import { removeOverlappingTonalFilters } from "./filterSimilarity";
+import { runFinalSafetyPass } from "./finalSafetyPass";
 import { globalOptimization } from "./globalOptimizer";
 import { initialFilterSelection } from "./initialSelection";
 import { interpolateLogarithmically } from "./math";
 import { computeAfterMetrics, computeBeforeMetrics } from "./metrics";
+import {
+	computeBroadRmsErrorDb,
+	computeExcessAreaDbOct,
+	computeMaximumBroadOvercutDb,
+	computeOvercutAreaDbOct,
+} from "./overcut";
 import {
 	prepareMeasurement,
 	refreshPreparedResidual,
@@ -24,6 +33,7 @@ import type {
 	AutoEqV3Result,
 	AutoEqV3StopReason,
 	AutoEqV3Warning,
+	AutoEqV31Diagnostics,
 	FrequencyPoint,
 } from "./types";
 
@@ -71,14 +81,39 @@ export function generateAutoEqV3(
 		})),
 	);
 
-	onProgress?.({ stage: "analyzing", progress: 0.12 });
-
+	onProgress?.({ stage: "detecting-resonances", progress: 0.1 });
 	const beforeMetrics = computeBeforeMetrics(prepared, options);
+	const emptyPredicted = computePredictedCurve(prepared, [], options);
+	const broadRmsBeforeDb = computeBroadRmsErrorDb(
+		emptyPredicted,
+		prepared.target,
+	);
+	const overcutAreaBeforeDbOct = computeOvercutAreaDbOct(
+		emptyPredicted,
+		prepared.target,
+	);
+	const excessAreaBeforeDbOct = computeExcessAreaDbOct(
+		emptyPredicted,
+		prepared.target,
+	);
+	const maximumBroadOvercutBeforeDb = computeMaximumBroadOvercutDb(
+		emptyPredicted,
+		prepared.target,
+	);
+	const initialCost = calculateTotalCost(
+		prepared,
+		alignedMeasurements,
+		[],
+		options,
+	).total;
 
-	onProgress?.({ stage: "generating-candidates", progress: 0.18 });
+	onProgress?.({ stage: "detecting-tonal-errors", progress: 0.14 });
 
 	const resonances = detectResonanceCandidates(prepared);
 	const tonalSegments = detectTonalCandidates(prepared);
+
+	onProgress?.({ stage: "generating-candidates", progress: 0.18 });
+
 	const shelves = detectShelfCandidates(prepared);
 	const rejectedNullCount = resonances.filter(
 		(item) => item.isPotentialNull,
@@ -100,6 +135,10 @@ export function generateAutoEqV3(
 
 	let filters = selectionResult.filters;
 	let stopReason: AutoEqV3StopReason = selectionResult.stopReason;
+	let rejectedOffBandDamageCount =
+		selectionResult.rejectedOffBandDamageCount;
+	let rejectedOvercutCount = selectionResult.rejectedOvercutCount;
+	let rejectedCandidateCount = selectionResult.rejectedCandidateCount;
 
 	filters = globalOptimization(
 		filters,
@@ -112,7 +151,7 @@ export function generateAutoEqV3(
 	let regenerationCycles = 0;
 	for (let cycle = 0; cycle < REGENERATION_CYCLES; cycle += 1) {
 		onProgress?.({
-			stage: "regenerating",
+			stage: "regenerating-candidates",
 			progress: 0.75 + (cycle / REGENERATION_CYCLES) * 0.05,
 			filterCount: filters.length,
 			iteration: cycle,
@@ -139,6 +178,10 @@ export function generateAutoEqV3(
 			filters,
 		);
 
+		rejectedOffBandDamageCount += regenerated.rejectedOffBandDamageCount;
+		rejectedOvercutCount += regenerated.rejectedOvercutCount;
+		rejectedCandidateCount += regenerated.rejectedCandidateCount;
+
 		if (regenerated.filters.length <= beforeCount) {
 			stopReason = "regeneration-exhausted";
 			break;
@@ -154,15 +197,33 @@ export function generateAutoEqV3(
 		regenerationCycles += 1;
 	}
 
+	filters = removeOverlappingTonalFilters(
+		filters,
+		prepared.detailed,
+		options.sampleRate,
+	);
+
 	onProgress?.({
 		stage: "pruning",
 		progress: 0.82,
 		filterCount: filters.length,
 	});
 
-	const beforePruneCount = filters.length;
-	filters = pruneFilters(filters, prepared, alignedMeasurements, options);
-	const prunedFilterCount = Math.max(0, beforePruneCount - filters.length);
+	const filtersBeforePruning = filters.length;
+	const pruneResult = pruneFilters(
+		filters,
+		prepared,
+		alignedMeasurements,
+		options,
+		initialCost,
+	);
+	filters = pruneResult.filters;
+	const filtersAfterPruning = filters.length;
+	const prunedFilterCount = Math.max(
+		0,
+		filtersBeforePruning - filtersAfterPruning,
+	);
+	let weakenedFilterCount = pruneResult.weakenedFilterCount;
 
 	onProgress?.({
 		stage: "merging",
@@ -188,6 +249,22 @@ export function generateAutoEqV3(
 	);
 
 	onProgress?.({
+		stage: "final-safety-pass",
+		progress: 0.9,
+		filterCount: filters.length,
+	});
+
+	const safetyResult = runFinalSafetyPass(
+		filters,
+		prepared,
+		alignedMeasurements,
+		options,
+	);
+	filters = safetyResult.filters;
+	weakenedFilterCount += safetyResult.weakenedFilterCount;
+	const filtersAfterSafetyPass = filters.length;
+
+	onProgress?.({
 		stage: "finalizing",
 		progress: 0.92,
 		filterCount: filters.length,
@@ -196,13 +273,14 @@ export function generateAutoEqV3(
 	const {
 		preampDb,
 		maximumCombinedBoostDb,
+		maximumCombinedCutDb,
 		warnings: preampWarnings,
 	} = calculatePreampDb(filters, options);
 	warnings.push(...preampWarnings);
 
 	const afterMetrics = computeAfterMetrics(prepared, filters, options);
-	const weightedRmsBeforeDb = beforeMetrics.rmsErrorDb;
-	const weightedRmsAfterDb = afterMetrics.rmsErrorDb;
+	const weightedRmsBeforeDb = beforeMetrics.weightedRmsErrorDb;
+	const weightedRmsAfterDb = afterMetrics.weightedRmsErrorDb;
 	const rmsImprovementPercent =
 		((weightedRmsBeforeDb - weightedRmsAfterDb) /
 			Math.max(weightedRmsBeforeDb, 1e-9)) *
@@ -212,6 +290,20 @@ export function generateAutoEqV3(
 		filters,
 		prepared.detailed,
 		options.sampleRate,
+	);
+
+	const broadRmsAfterDb = computeBroadRmsErrorDb(predicted, prepared.target);
+	const overcutAreaAfterDbOct = computeOvercutAreaDbOct(
+		predicted,
+		prepared.target,
+	);
+	const excessAreaAfterDbOct = computeExcessAreaDbOct(
+		predicted,
+		prepared.target,
+	);
+	const maximumBroadOvercutAfterDb = computeMaximumBroadOvercutDb(
+		predicted,
+		prepared.target,
 	);
 
 	const improvementPercent =
@@ -238,6 +330,40 @@ export function generateAutoEqV3(
 		stopReason = "completed";
 	}
 
+	const executionTimeMs = performance.now() - startedAt;
+
+	const diagnostics: AutoEqV31Diagnostics = {
+		filtersBeforePruning,
+		filtersAfterPruning,
+		filtersAfterSafetyPass,
+		resonanceCandidateCount: initialPools.resonance.length,
+		tonalCandidateCount: initialPools.tonal.length,
+		shelfCandidateCount: initialPools.shelf.length,
+		acceptedCandidateCount: filters.length,
+		rejectedCandidateCount,
+		rejectedNullCount,
+		rejectedOffBandDamageCount,
+		rejectedOvercutCount,
+		prunedFilterCount,
+		weakenedFilterCount,
+		mergedFilterCount,
+		weightedRmsBeforeDb,
+		weightedRmsAfterDb,
+		broadRmsBeforeDb,
+		broadRmsAfterDb,
+		overcutAreaBeforeDbOct,
+		overcutAreaAfterDbOct,
+		excessAreaBeforeDbOct,
+		excessAreaAfterDbOct,
+		maximumBroadOvercutBeforeDb,
+		maximumBroadOvercutAfterDb,
+		maximumCombinedBoostDb,
+		maximumCombinedCutDb,
+		preampDb,
+		stopReason,
+		executionTimeMs,
+	};
+
 	onProgress?.({
 		stage: "finalizing",
 		progress: 1,
@@ -255,6 +381,8 @@ export function generateAutoEqV3(
 		combinedFilterResponse,
 		targetType: prepared.targetType,
 		targetLevelOffsetDb: prepared.targetLevelOffsetDb,
+		targetLabel: prepared.targetLabel,
+		resolvedTarget: prepared.resolvedTarget,
 		errorBefore: beforeMetrics.scalarError,
 		errorAfter: afterMetrics.scalarError,
 		rmsErrorBeforeDb: beforeMetrics.rmsErrorDb,
@@ -263,6 +391,15 @@ export function generateAutoEqV3(
 		maximumErrorAfterDb: afterMetrics.maximumErrorDb,
 		weightedRmsBeforeDb,
 		weightedRmsAfterDb,
+		broadRmsBeforeDb,
+		broadRmsAfterDb,
+		overcutAreaBeforeDbOct,
+		overcutAreaAfterDbOct,
+		excessAreaBeforeDbOct,
+		excessAreaAfterDbOct,
+		maximumBroadOvercutBeforeDb,
+		maximumBroadOvercutAfterDb,
+		maximumCombinedCutDb,
 		rmsImprovementPercent,
 		candidateCount: {
 			resonance: initialPools.resonance.length,
@@ -273,15 +410,22 @@ export function generateAutoEqV3(
 		acceptedCandidateCount: filters.length,
 		rejectedNullCount,
 		rejectedSimilarFilterCount: 0,
+		rejectedOffBandDamageCount,
+		rejectedOvercutCount,
 		prunedFilterCount,
+		weakenedFilterCount,
 		mergedFilterCount,
+		filtersBeforePruning,
+		filtersAfterPruning,
+		filtersAfterSafetyPass,
 		maximumCombinedBoostDb,
 		confidence,
 		warnings,
 		stopReason,
 		regenerationCycles,
 		optimizationPasses: 12,
-		executionTimeMs: performance.now() - startedAt,
+		executionTimeMs,
+		diagnostics,
 	};
 }
 

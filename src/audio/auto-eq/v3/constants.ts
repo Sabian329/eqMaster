@@ -81,7 +81,7 @@ export const OPTIMIZATION_STAGES = {
 
 export const MAX_OPTIMIZER_PASSES = 12;
 export const MULTI_START_VARIANTS = 3;
-export const REGENERATION_CYCLES = 2;
+export const REGENERATION_CYCLES = 1;
 export const GAIN_RETUNE_DELTAS_DB = [0.5, 0.25, -0.25, -0.5] as const;
 export const GAIN_RETUNE_PASSES = 3;
 

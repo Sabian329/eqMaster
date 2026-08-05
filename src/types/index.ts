@@ -52,6 +52,12 @@ export interface Suggestion {
   source?: SuggestionSource;
   customId?: string;
   filterType?: EqFilterType;
+  safetyAdjusted?: boolean;
+  localImprovement?: number;
+  offBandDamage?: number;
+  confidence?: number;
+  improvementPercent?: number;
+  reason?: string;
 }
 
 export interface MeasurementMeta {

@@ -21,9 +21,9 @@ export const EQ_ALGORITHMS: EqAlgorithmInfo[] = [
 	},
 	{
 		id: "v3",
-		label: "V3.0.0",
+		label: "V3.1.0",
 		description:
-			"V3 — separate resonance and tonal candidate pools, adaptive selection, global optimization and filter pruning.",
+			"V3.1 — adaptive candidate pools, conservative high-frequency correction, broad overcut protection and final safety pass.",
 	},
 ];
 

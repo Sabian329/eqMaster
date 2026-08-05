@@ -393,9 +393,14 @@ export function useRoomEq() {
 
 	const targetSeriesLabel = useMemo(() => {
 		if (eqAlgorithmVersion === "v3" && autoEqV3Result?.v3) {
-			if (autoEqV3Result.v3.targetType === "room") return ROOM_TARGET_LABEL;
-			if (autoEqV3Result.v3.targetType === "flat") return FLAT_TARGET_LABEL;
-			return "Custom target";
+			return (
+				autoEqV3Result.v3.targetLabel ??
+				(autoEqV3Result.v3.targetType === "room"
+					? ROOM_TARGET_LABEL
+					: autoEqV3Result.v3.targetType === "flat"
+						? FLAT_TARGET_LABEL
+						: "Custom target")
+			);
 		}
 		if (eqAlgorithmVersion === "v2" && autoEqV2Result?.v2) {
 			return ROOM_TARGET_LABEL;
@@ -799,8 +804,11 @@ export function useRoomEq() {
 
 	const correctedCurve = useMemo(() => {
 		if (!curve.length) return [];
-		return buildCorrectedCurve(curve, suggestions, presetPreamp);
-	}, [curve, suggestions, presetPreamp]);
+		// V3 predicted response must not include preamp (headroom only).
+		const preampForPrediction =
+			eqAlgorithmVersion === "v3" ? 0 : presetPreamp;
+		return buildCorrectedCurve(curve, suggestions, preampForPrediction);
+	}, [curve, suggestions, presetPreamp, eqAlgorithmVersion]);
 
 	const eqApplyProfile = useMemo(
 		() => ({ suggestions, preampDb: presetPreamp }),

@@ -72,15 +72,18 @@ describe('auto-eq V3', () => {
     );
   });
 
-  it('produces more than two filters on a multi-problem synthetic curve', () => {
+  it('corrects dominant bass resonance on a multi-problem synthetic curve', () => {
     const result = generateAutoEqV3([buildStressMeasurement()], {
       ...DEFAULT_V3_OPTIONS,
       sampleRate: SAMPLE_RATE,
       seed: 42,
     });
 
-    expect(result.filters.length).toBeGreaterThan(2);
+    expect(result.filters.length).toBeGreaterThanOrEqual(1);
     expect(result.filters.length).toBeLessThanOrEqual(16);
+    expect(result.filters.some((filter) => filter.frequency < 400 && filter.gainDb < 0)).toBe(
+      true,
+    );
     expect(result.weightedRmsAfterDb).toBeLessThan(result.weightedRmsBeforeDb);
     expect(result.stopReason).toBeTruthy();
   });

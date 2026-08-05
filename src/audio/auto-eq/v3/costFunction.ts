@@ -7,7 +7,21 @@ import {
 	OVERLAP_DISTANCE_OCTAVES,
 } from "./constants";
 import { getCombinedFilterResponseDb } from "./biquadResponse";
+import {
+	buildAnalysisPoint,
+	getCorrectabilityWeight,
+} from "./correctability";
+import {
+	getHighQPenaltyWeight,
+	getPreferredMaximumQ,
+} from "./correctionStrength";
 import { clamp, frequencyWeight, huber, resampleToGrid } from "./math";
+import {
+	computeBroadCutLimitPenalty,
+	computeBroadOvercutPenalty,
+	smoothToBroad,
+} from "./overcut";
+import { applyTolerance, getTargetToleranceDb } from "./tolerance";
 import type {
 	AutoEqV3Options,
 	CostBreakdown,
@@ -16,12 +30,20 @@ import type {
 	PreparedMeasurement,
 } from "./types";
 
+function asymmetricError(errorDb: number, frequency: number): number {
+	if (frequency < 1_000) return errorDb;
+	// Prefer slight excess over broad undershoot above 1 kHz.
+	if (errorDb < 0) return errorDb * 1.35;
+	return errorDb * 0.85;
+}
+
 function measurementCost(
 	measured: FrequencyPoint[],
 	target: FrequencyPoint[],
 	filterResponse: number[],
 	reliability: Float64Array,
 	options: AutoEqV3Options,
+	prepared: PreparedMeasurement,
 ): number {
 	let totalLoss = 0;
 	let totalWeight = 0;
@@ -38,10 +60,32 @@ function measurementCost(
 			-COST_ERROR_CLAMP_DB,
 			COST_ERROR_CLAMP_DB,
 		);
-		const weight = frequencyWeight(frequency) * reliability[index];
+		const toleratedError = applyTolerance(
+			limitedError,
+			getTargetToleranceDb(frequency),
+		);
+		const shapedError = asymmetricError(toleratedError, frequency);
 
-		totalLoss += huber(limitedError, HUBER_DELTA) * weight;
-		totalWeight += weight;
+		const analysis = buildAnalysisPoint({
+			frequency,
+			errorDb: rawError,
+			reliability: reliability[index],
+			boostAllowed:
+				options.allowBoosts &&
+				frequency >= prepared.usableBoostRange.fromHz &&
+				frequency <= prepared.usableBoostRange.toHz,
+			usableFromHz: prepared.usableBoostRange.fromHz,
+			usableToHz: prepared.usableBoostRange.toHz,
+		});
+
+		const correctabilityWeight = getCorrectabilityWeight(analysis);
+		const pointWeight =
+			frequencyWeight(frequency) *
+			reliability[index] *
+			correctabilityWeight;
+
+		totalLoss += huber(shapedError, HUBER_DELTA) * pointWeight;
+		totalWeight += pointWeight;
 	}
 
 	return totalLoss / Math.max(totalWeight, 1);
@@ -57,22 +101,34 @@ function computeFilterResponseArray(
 	);
 }
 
-function boostPenalty(filters: GeneratedEqFilter[]): number {
+function boostPenalty(
+	filters: GeneratedEqFilter[],
+	measurementCount: number,
+): number {
 	let penalty = 0;
 	for (const filter of filters) {
-		if (filter.gainDb > 0) {
-			penalty += BOOST_PENALTY_COEFFICIENT * filter.gainDb * filter.gainDb;
+		if (filter.gainDb <= 0) continue;
+		let coefficient = BOOST_PENALTY_COEFFICIENT * 3;
+		if (measurementCount === 1 && filter.frequency >= 1_000) {
+			coefficient *= 1.5;
 		}
+		penalty += coefficient * filter.gainDb * filter.gainDb;
 	}
 	return penalty;
 }
 
-function qPenalty(filters: GeneratedEqFilter[]): number {
+function highQPenalty(
+	filters: GeneratedEqFilter[],
+	measurementCount: number,
+): number {
 	let penalty = 0;
 	for (const filter of filters) {
-		if (filter.q > 4) {
-			penalty += 0.01 * (filter.q - 4) ** 2;
-		}
+		const preferred = getPreferredMaximumQ(filter.frequency);
+		const excessiveQ = Math.max(0, filter.q - preferred);
+		penalty +=
+			excessiveQ *
+			excessiveQ *
+			getHighQPenaltyWeight(filter.frequency, measurementCount);
 	}
 	return penalty;
 }
@@ -84,8 +140,34 @@ function overlapPenalty(filters: GeneratedEqFilter[]): number {
 			const distance = Math.abs(
 				Math.log2(filters[left].frequency / filters[right].frequency),
 			);
+			const bothCuts =
+				filters[left].gainDb < 0 && filters[right].gainDb < 0;
+			const bothAbove1k =
+				filters[left].frequency >= 1_000 &&
+				filters[right].frequency >= 1_000;
+
 			if (distance < OVERLAP_DISTANCE_OCTAVES) {
 				penalty += 0.08;
+			}
+
+			if (bothCuts && bothAbove1k && distance < 0.75) {
+				const gainSum =
+					Math.abs(filters[left].gainDb) + Math.abs(filters[right].gainDb);
+				const correlationProxy = Math.max(0, 1 - distance / 0.75);
+				if (correlationProxy > 0.8) {
+					let multiplier = 0.35;
+					if (
+						filters[left].frequency >= 5_000 &&
+						filters[right].frequency >= 5_000
+					) {
+						multiplier = 0.7;
+					}
+					penalty +=
+						multiplier *
+						correlationProxy *
+						gainSum *
+						Math.max(0.1, 0.75 - distance);
+				}
 			}
 		}
 	}
@@ -132,6 +214,16 @@ function filterCountPenalty(
 	return 0.004 * (filters.length / Math.max(maxFilters, 1));
 }
 
+function offBandDamagePenalty(filters: GeneratedEqFilter[]): number {
+	let penalty = 0;
+	for (const filter of filters) {
+		if (typeof filter.offBandDamage === "number" && filter.offBandDamage > 0) {
+			penalty += filter.offBandDamage * 0.5;
+		}
+	}
+	return penalty;
+}
+
 export function calculateTotalCost(
 	prepared: PreparedMeasurement,
 	measurements: FrequencyPoint[][],
@@ -169,6 +261,7 @@ export function calculateTotalCost(
 		medianResponse,
 		prepared.reliability,
 		options,
+		prepared,
 	);
 
 	const perMeasurementCosts = measurements.map((measurement) => {
@@ -179,38 +272,74 @@ export function calculateTotalCost(
 			filterResponse,
 			simReliability,
 			options,
+			prepared,
 		);
 	});
 
 	const worstCost = Math.max(...perMeasurementCosts, medianCost);
+	const responseCost =
+		MEDIAN_WORST_SPLIT.median * medianCost +
+		MEDIAN_WORST_SPLIT.worst * worstCost;
 
-	const boost = boostPenalty(filters);
+	const boost = boostPenalty(filters, prepared.measurementCount);
 	const overlap = overlapPenalty(filters);
 	const cancellation = cancellationPenalty(filters);
-	const q = qPenalty(filters);
+	const highQ = highQPenalty(filters, prepared.measurementCount);
 	const headroom = headroomPenalty(filters, grid, options.sampleRate);
 	const filterCount = filterCountPenalty(filters, options.maxFilters);
+	const offBand = offBandDamagePenalty(filters);
+
+	// Evaluate broad penalties on a decimated grid to keep optimizer iterations fast.
+	const decimation = 4;
+	const combinedFilterCurve: FrequencyPoint[] = [];
+	const predictedCurve: FrequencyPoint[] = [];
+	const decimatedTarget: FrequencyPoint[] = [];
+	for (let index = 0; index < medianGrid.length; index += decimation) {
+		combinedFilterCurve.push({
+			frequency: medianGrid[index].frequency,
+			db: medianResponse[index],
+		});
+		predictedCurve.push({
+			frequency: medianGrid[index].frequency,
+			db: medianGrid[index].db + medianResponse[index],
+		});
+		decimatedTarget.push(prepared.target[index]);
+	}
+	const broadPredicted = smoothToBroad(predictedCurve);
+	const broadCombined = smoothToBroad(combinedFilterCurve);
+	const broadOvercut = computeBroadOvercutPenalty(
+		broadPredicted,
+		decimatedTarget,
+	);
+	const broadCutLimit = computeBroadCutLimitPenalty(broadCombined);
 
 	const total =
-		MEDIAN_WORST_SPLIT.median * medianCost +
-		MEDIAN_WORST_SPLIT.worst * worstCost +
+		responseCost +
 		boost +
-		q +
+		highQ +
 		overlap +
 		cancellation +
 		headroom +
-		filterCount;
+		filterCount +
+		offBand +
+		broadOvercut +
+		broadCutLimit;
 
 	return {
 		total,
 		medianMeasurementCost: medianCost,
 		worstMeasurementCost: worstCost,
+		responseCost,
 		boostPenalty: boost,
 		overlapPenalty: overlap,
 		cancellationPenalty: cancellation,
-		qPenalty: q,
+		qPenalty: highQ,
+		highQPenalty: highQ,
 		headroomPenalty: headroom,
 		filterCountPenalty: filterCount,
+		offBandDamagePenalty: offBand,
+		broadOvercutPenalty: broadOvercut,
+		broadCutLimitPenalty: broadCutLimit,
 	};
 }
 

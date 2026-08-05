@@ -15,7 +15,7 @@ import {
 } from "./math";
 import { smoothFractionalOctave } from "./smoothing";
 import { getCombinedFilterResponseDb } from "./biquadResponse";
-import { alignTargetToMeasurement, buildTargetCurve } from "./target";
+import { resolveTarget } from "./target";
 import type {
 	AutoEqV3Options,
 	AutoEqV3Warning,
@@ -172,11 +172,8 @@ export function prepareMeasurement(
 		DETAILED_SMOOTHING_FRACTION,
 	);
 
-	const rawTarget = buildTargetCurve(detailedSmoothed, options);
-	const { aligned: target, levelOffsetDb } = alignTargetToMeasurement(
-		detailedSmoothed,
-		rawTarget,
-	);
+	const resolvedTarget = resolveTarget(detailedSmoothed, options);
+	const target = resolvedTarget.points;
 
 	const narrowResidual = detailedSmoothed.map((point, index) => ({
 		frequency: point.frequency,
@@ -207,14 +204,16 @@ export function prepareMeasurement(
 		detailed: detailedSmoothed,
 		broad,
 		target,
+		resolvedTarget,
 		narrowResidual,
 		tonalError,
 		reliability,
 		repeatabilityDb,
 		measurementCount,
 		usableBoostRange,
-		targetType: options.targetType,
-		targetLevelOffsetDb: levelOffsetDb,
+		targetType: resolvedTarget.type,
+		targetLevelOffsetDb: resolvedTarget.levelOffsetDb,
+		targetLabel: resolvedTarget.label,
 		simGrid,
 		warnings,
 	};

@@ -41,16 +41,32 @@ export function ChartAlgorithmToggle({
       <Text fontSize="2xs" color={ui.colors.textDim} fontFamily={ui.fonts.mono} pl={0.5}>
         {active.description}
       </Text>
-      {autoEqV2Progress && eqAlgorithmVersion === 'v2' && (
-        <Text fontSize="2xs" color={ui.colors.accent} fontFamily={ui.fonts.mono} pl={0.5}>
-          V2 {autoEqV2Progress.stage}… {Math.round(autoEqV2Progress.progress * 100)}%
-        </Text>
-      )}
-      {autoEqV3Progress && eqAlgorithmVersion === 'v3' && (
-        <Text fontSize="2xs" color={ui.colors.accent} fontFamily={ui.fonts.mono} pl={0.5}>
-          V3 {autoEqV3Progress.stage}… {Math.round(autoEqV3Progress.progress * 100)}%
-        </Text>
-      )}
+      <Text
+        fontSize="2xs"
+        color={ui.colors.accent}
+        fontFamily={ui.fonts.mono}
+        pl={0.5}
+        h="1.25em"
+        lineHeight="1.25em"
+        visibility={
+          (eqAlgorithmVersion === 'v2' && autoEqV2Progress) ||
+          (eqAlgorithmVersion === 'v3' && autoEqV3Progress)
+            ? 'visible'
+            : 'hidden'
+        }
+        aria-hidden={
+          !(
+            (eqAlgorithmVersion === 'v2' && autoEqV2Progress) ||
+            (eqAlgorithmVersion === 'v3' && autoEqV3Progress)
+          )
+        }
+      >
+        {eqAlgorithmVersion === 'v2' && autoEqV2Progress
+          ? `V2 ${autoEqV2Progress.stage}… ${Math.round(autoEqV2Progress.progress * 100)}%`
+          : eqAlgorithmVersion === 'v3' && autoEqV3Progress
+            ? `V3 ${autoEqV3Progress.stage}… ${Math.round(autoEqV3Progress.progress * 100)}%`
+            : '\u00a0'}
+      </Text>
     </Stack>
   );
 }

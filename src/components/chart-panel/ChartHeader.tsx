@@ -9,7 +9,6 @@ import {
 } from "@chakra-ui/react";
 import type { ChartSeries } from "../../types";
 import { ui } from "../../theme";
-import { FLAT_TARGET_LABEL } from "../../utils/toneProfile";
 
 interface ChartHeaderProps {
 	chartSeries: ChartSeries[];
@@ -30,7 +29,9 @@ export function ChartHeader({
 }: ChartHeaderProps) {
 	const hasCorrected = chartSeries.some((item) => item.id === "corrected");
 	const hasVerified = chartSeries.some((item) => item.id === "verified");
-	const hasTarget = chartSeries.some((item) => item.id === "target");
+	const targetSeries = chartSeries.find((item) => item.id === "target");
+	const hasTarget = Boolean(targetSeries);
+	const targetLegendLabel = targetSeries?.label ?? "Target";
 	const toggleableSeries = chartSeries.filter((item) => item.id !== "target");
 
 	return (
@@ -95,7 +96,7 @@ export function ChartHeader({
 								borderTopColor="#f0f2f5"
 							/>
 							<Text color="gray.50" fontWeight="medium" mb={0}>
-								{FLAT_TARGET_LABEL}
+								{targetLegendLabel}
 							</Text>
 						</HStack>
 					) : null}

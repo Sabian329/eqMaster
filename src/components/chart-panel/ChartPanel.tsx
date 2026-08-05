@@ -21,6 +21,8 @@ export function ChartPanel({ state }: ChartPanelProps) {
 		measurementMeta,
 		measurementRuns,
 		averagedRun,
+		autoEqV2IsRunning,
+		autoEqV3IsRunning,
 	} = state;
 	const displayMeta =
 		averagedRun?.meta ??
@@ -30,6 +32,7 @@ export function ChartPanel({ state }: ChartPanelProps) {
 		chartSeries,
 		displayMeta?.fMin ?? 40,
 	);
+	const isAlgorithmLoading = autoEqV2IsRunning || autoEqV3IsRunning;
 
 	return (
 		<Card.Root w="full" {...panelStyles.root} id="frequency-chart-panel">
@@ -61,8 +64,26 @@ export function ChartPanel({ state }: ChartPanelProps) {
 						fMax={fMax}
 						suggestions={state.suggestions}
 						filterOverlays={showCorrectionFills ? filterOverlays : []}
-						onAddCustomBand={state.addCustomBand}
+						onAddCustomBand={
+							isAlgorithmLoading ? undefined : state.addCustomBand
+						}
 					/>
+					{isAlgorithmLoading ? (
+						<Box
+							position="absolute"
+							top={0}
+							right={0}
+							bottom={0}
+							left={0}
+							zIndex={5}
+							cursor="not-allowed"
+							bg="rgba(0, 0, 0, 0.22)"
+							css={{ backdropFilter: "grayscale(1)" }}
+							aria-busy="true"
+							aria-label="Algorithm loading"
+							pointerEvents="auto"
+						/>
+					) : null}
 				</Box>
 
 				<ChartV2RecalculateFromState state={state} />

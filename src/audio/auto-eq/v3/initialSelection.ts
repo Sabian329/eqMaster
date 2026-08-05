@@ -10,9 +10,17 @@ import {
 	cloneFilter,
 	resetCandidateCounter,
 } from "./candidatePool";
+import {
+	acceptsCandidateEvaluation,
+	evaluateCandidateAddition,
+	overlapOctaves,
+} from "./candidateEvaluation";
 import { calculateTotalCost } from "./costFunction";
 import { clampFilterGain } from "./frequencyLimits";
-import { rejectSimilarCandidates } from "./filterSimilarity";
+import {
+	rejectSimilarCandidates,
+	responseCorrelation,
+} from "./filterSimilarity";
 import { detectResonanceCandidates } from "./resonanceCandidates";
 import { detectShelfCandidates } from "./shelfCandidates";
 import { detectTonalCandidates } from "./tonalCandidates";
@@ -31,6 +39,14 @@ export type ProgressCallback = (progress: AutoEqV3Progress) => void;
 
 function isResonanceReason(reason: GeneratedEqFilter["reason"]): boolean {
 	return reason === "local-resonance" || reason === "repeated-resonance";
+}
+
+function isTonalOrShelf(reason: GeneratedEqFilter["reason"]): boolean {
+	return (
+		reason === "broad-tonal-error" ||
+		reason === "low-frequency-tilt" ||
+		reason === "high-frequency-tilt"
+	);
 }
 
 export function getMinimumImprovementPercent(
@@ -55,16 +71,27 @@ function retuneFilterGains(
 		current,
 		options,
 	).total;
+	const limitOptions = { measurementCount: prepared.measurementCount };
 
 	for (let pass = 0; pass < GAIN_RETUNE_PASSES; pass += 1) {
 		let improved = false;
 		for (let index = 0; index < current.length; index += 1) {
 			for (const delta of GAIN_RETUNE_DELTAS_DB) {
 				const trial = current.map(cloneFilter);
+				const proposed = trial[index].gainDb + delta;
+				// Prefer weakening over deepening above 1 kHz.
+				if (
+					trial[index].frequency >= 1_000 &&
+					Math.abs(proposed) > Math.abs(trial[index].gainDb) &&
+					delta < 0 === trial[index].gainDb < 0
+				) {
+					continue;
+				}
 				trial[index].gainDb = clampFilterGain(
-					trial[index].gainDb + delta,
+					proposed,
 					trial[index].frequency,
 					trial[index].type,
+					limitOptions,
 				);
 				const trialCost = calculateTotalCost(
 					prepared,
@@ -83,6 +110,36 @@ function retuneFilterGains(
 	}
 
 	return current;
+}
+
+function tonalRegionAllowsCandidate(
+	candidate: GeneratedEqFilter,
+	existing: GeneratedEqFilter[],
+	prepared: PreparedMeasurement,
+	options: AutoEqV3Options,
+): boolean {
+	if (!isTonalOrShelf(candidate.reason)) return true;
+
+	const overlappingTonal = existing.filter((filter) => {
+		if (!isTonalOrShelf(filter.reason)) return false;
+		const distance = Math.abs(
+			Math.log2(candidate.frequency / filter.frequency),
+		);
+		if (candidate.frequency >= 1_000 && filter.frequency >= 1_000 && distance < 0.75) {
+			return true;
+		}
+		const correlation = responseCorrelation(
+			candidate,
+			filter,
+			prepared.detailed,
+			options.sampleRate,
+		);
+		const overlap = overlapOctaves(candidate, filter);
+		return correlation > 0.85 && overlap > 0.5;
+	});
+
+	// At most one broad tonal/shelf filter per overlapping high-frequency region.
+	return overlappingTonal.length === 0;
 }
 
 function selectDiverseCandidates(
@@ -107,6 +164,7 @@ function selectDiverseCandidates(
 		options,
 	).total;
 
+	// Cheap pre-score by global cost only; full local evaluation happens on accept.
 	const scored = filtered
 		.map((candidate) => {
 			const trial = [...existing, candidateToFilter(candidate)];
@@ -116,8 +174,10 @@ function selectDiverseCandidates(
 				trial,
 				options,
 			).total;
-			const improvement = (baseCost - trialCost) / Math.max(baseCost, 1e-6);
-			return { candidate, improvement };
+			return {
+				candidate,
+				improvement: baseCost - trialCost,
+			};
 		})
 		.filter((entry) => entry.improvement > 0)
 		.sort((left, right) => right.improvement - left.improvement);
@@ -142,6 +202,11 @@ function tryAddBestFromPool(
 	prepared: PreparedMeasurement,
 	measurements: FrequencyPoint[][],
 	options: AutoEqV3Options,
+	rejectionStats: {
+		rejectedOffBandDamageCount: number;
+		rejectedOvercutCount: number;
+		rejectedCandidateCount: number;
+	},
 ): {
 	filters: GeneratedEqFilter[];
 	improved: boolean;
@@ -160,13 +225,49 @@ function tryAddBestFromPool(
 	for (const candidate of pool) {
 		if (Math.abs(candidate.gainDb) < MIN_FILTER_GAIN_DB) continue;
 
-		const nextFilters = [...filters, candidateToFilter(candidate)];
-		const nextCost = calculateTotalCost(
+		const filter = candidateToFilter(candidate);
+		if (!tonalRegionAllowsCandidate(filter, filters, prepared, options)) {
+			rejectionStats.rejectedCandidateCount += 1;
+			continue;
+		}
+
+		const evaluation = evaluateCandidateAddition(
 			prepared,
 			measurements,
-			nextFilters,
+			filters,
+			filter,
 			options,
-		).total;
+		);
+
+		if (
+			!acceptsCandidateEvaluation(evaluation, {
+				frequency: filter.frequency,
+				reason: filter.reason,
+			})
+		) {
+			rejectionStats.rejectedCandidateCount += 1;
+			const limitsFrequency = filter.frequency;
+			if (
+				evaluation.offBandDamage >
+				(limitsFrequency < 1_000 ? 0.75 : 0.08)
+			) {
+				rejectionStats.rejectedOffBandDamageCount += 1;
+			}
+			if (
+				evaluation.broadOvercutAfter >
+				evaluation.broadOvercutBefore +
+					(limitsFrequency < 1_000 ? 0.35 : 0.02)
+			) {
+				rejectionStats.rejectedOvercutCount += 1;
+			}
+			continue;
+		}
+
+		filter.localImprovement = evaluation.localImprovement;
+		filter.offBandDamage = evaluation.offBandDamage;
+
+		const nextFilters = [...filters, filter];
+		const nextCost = evaluation.globalCostAfter;
 		const improvement =
 			((baseCost - nextCost) / Math.max(baseCost, 1e-6)) * 100;
 
@@ -192,15 +293,41 @@ function tryAddBestFromCategories(
 	prepared: PreparedMeasurement,
 	measurements: FrequencyPoint[][],
 	options: AutoEqV3Options,
+	rejectionStats: {
+		rejectedOffBandDamageCount: number;
+		rejectedOvercutCount: number;
+		rejectedCandidateCount: number;
+	},
 ): {
 	filters: GeneratedEqFilter[];
 	improved: boolean;
 	improvementPercent: number;
 } {
 	const attempts = [
-		tryAddBestFromPool(filters, resonancePool, prepared, measurements, options),
-		tryAddBestFromPool(filters, tonalPool, prepared, measurements, options),
-		tryAddBestFromPool(filters, shelfPool, prepared, measurements, options),
+		tryAddBestFromPool(
+			filters,
+			resonancePool,
+			prepared,
+			measurements,
+			options,
+			rejectionStats,
+		),
+		tryAddBestFromPool(
+			filters,
+			tonalPool,
+			prepared,
+			measurements,
+			options,
+			rejectionStats,
+		),
+		tryAddBestFromPool(
+			filters,
+			shelfPool,
+			prepared,
+			measurements,
+			options,
+			rejectionStats,
+		),
 	];
 
 	const improvedAttempts = attempts.filter((attempt) => attempt.improved);
@@ -233,6 +360,9 @@ function tryAddBestFromCategories(
 export interface InitialSelectionResult {
 	filters: GeneratedEqFilter[];
 	stopReason: AutoEqV3StopReason;
+	rejectedOffBandDamageCount: number;
+	rejectedOvercutCount: number;
+	rejectedCandidateCount: number;
 }
 
 export function initialFilterSelection(
@@ -255,6 +385,11 @@ export function initialFilterSelection(
 	).total;
 	let stopReason: AutoEqV3StopReason = "completed";
 	let cutsOnlyPhase = true;
+	const rejectionStats = {
+		rejectedOffBandDamageCount: 0,
+		rejectedOvercutCount: 0,
+		rejectedCandidateCount: 0,
+	};
 
 	for (let iteration = 0; iteration < options.maxFilters; iteration += 1) {
 		onProgress?.({
@@ -327,6 +462,7 @@ export function initialFilterSelection(
 			workingPrepared,
 			measurements,
 			options,
+			rejectionStats,
 		);
 
 		if (!result.improved) {
@@ -384,5 +520,11 @@ export function initialFilterSelection(
 		stopReason = "max-filters-reached";
 	}
 
-	return { filters, stopReason };
+	return {
+		filters,
+		stopReason,
+		rejectedOffBandDamageCount: rejectionStats.rejectedOffBandDamageCount,
+		rejectedOvercutCount: rejectionStats.rejectedOvercutCount,
+		rejectedCandidateCount: rejectionStats.rejectedCandidateCount,
+	};
 }

@@ -6,6 +6,7 @@ import {
 } from "./constants";
 import { cloneFilter } from "./candidatePool";
 import { calculateTotalCost } from "./costFunction";
+import { getCorrectionStrength } from "./correctionStrength";
 import { clampFilterGain, clampFilterQ } from "./frequencyLimits";
 import { SeededRandom } from "./math";
 import type {
@@ -17,6 +18,28 @@ import type {
 } from "./types";
 
 export type ProgressCallback = (progress: AutoEqV3Progress) => void;
+
+function limitGainIncrease(
+	original: GeneratedEqFilter,
+	proposedGainDb: number,
+	prepared: PreparedMeasurement,
+): number {
+	const strength = getCorrectionStrength(
+		original.frequency,
+		prepared.measurementCount,
+		original.confidence,
+	);
+	const maxMagnitude = Math.abs(original.gainDb) / Math.max(strength, 0.25);
+
+	if (original.gainDb < 0) {
+		// Cuts: do not deepen beyond a strength-informed ceiling without strong need.
+		const floor = -Math.max(Math.abs(original.gainDb), maxMagnitude * strength);
+		return Math.max(proposedGainDb, floor * 1.15);
+	}
+
+	const ceiling = Math.max(original.gainDb, maxMagnitude * strength);
+	return Math.min(proposedGainDb, ceiling * 1.15);
+}
 
 function coordinateDescentPass(
 	filters: GeneratedEqFilter[],
@@ -34,6 +57,7 @@ function coordinateDescentPass(
 		current,
 		options,
 	).total;
+	const limitOptions = { measurementCount: prepared.measurementCount };
 
 	for (let index = 0; index < current.length; index += 1) {
 		const original = cloneFilter(current[index]);
@@ -56,22 +80,27 @@ function coordinateDescentPass(
 				trial[index].gainDb,
 				frequency,
 				trial[index].type,
+				limitOptions,
 			);
 			trial[index].q = clampFilterQ(
 				trial[index].q,
 				frequency,
 				trial[index].gainDb,
 				trial[index].type,
+				false,
+				limitOptions,
 			);
 			trials.push(trial);
 		}
 
 		for (const gainDb of gainVariants) {
 			const trial = current.map(cloneFilter);
+			const limitedGain = limitGainIncrease(original, gainDb, prepared);
 			trial[index].gainDb = clampFilterGain(
-				gainDb,
+				limitedGain,
 				trial[index].frequency,
 				trial[index].type,
+				limitOptions,
 			);
 			trials.push(trial);
 		}
@@ -83,6 +112,8 @@ function coordinateDescentPass(
 				trial[index].frequency,
 				trial[index].gainDb,
 				trial[index].type,
+				false,
+				limitOptions,
 			);
 			trials.push(trial);
 		}
@@ -99,6 +130,17 @@ function coordinateDescentPass(
 				trial,
 				options,
 			).total;
+
+			const deepeningCut =
+				trial.length === current.length &&
+				Math.abs(trial[index]?.gainDb ?? 0) >
+					Math.abs(original.gainDb) + 1e-6 &&
+				original.frequency >= 1_000;
+
+			if (deepeningCut && trialCost > bestCost * 0.985) {
+				continue;
+			}
+
 			if (trialCost < bestCost) {
 				bestCost = trialCost;
 				current = trial;
@@ -112,9 +154,11 @@ function coordinateDescentPass(
 function buildMultiStartVariants(
 	initialFilters: GeneratedEqFilter[],
 	seed: number,
+	prepared: PreparedMeasurement,
 ): GeneratedEqFilter[][] {
 	const random = new SeededRandom(seed);
 	const starts: GeneratedEqFilter[][] = [initialFilters.map(cloneFilter)];
+	const limitOptions = { measurementCount: prepared.measurementCount };
 
 	if (MULTI_START_VARIANTS >= 2) {
 		starts.push(
@@ -125,6 +169,7 @@ function buildMultiStartVariants(
 					clone.gainDb,
 					clone.frequency,
 					clone.type,
+					limitOptions,
 				);
 				return clone;
 			}),
@@ -140,6 +185,8 @@ function buildMultiStartVariants(
 					clone.frequency,
 					clone.gainDb,
 					clone.type,
+					false,
+					limitOptions,
 				);
 				return clone;
 			}),
@@ -156,6 +203,7 @@ function buildMultiStartVariants(
 					clone.gainDb,
 					clone.frequency,
 					clone.type,
+					limitOptions,
 				);
 				return clone;
 			}),
@@ -172,7 +220,11 @@ export function globalOptimization(
 	options: AutoEqV3Options,
 	onProgress?: ProgressCallback,
 ): GeneratedEqFilter[] {
-	const starts = buildMultiStartVariants(initialFilters, options.seed);
+	const starts = buildMultiStartVariants(
+		initialFilters,
+		options.seed,
+		prepared,
+	);
 
 	let bestFilters = initialFilters.map(cloneFilter);
 	let bestCost = calculateTotalCost(
