@@ -81,7 +81,10 @@ export function SweepSection({ state }: SweepSectionProps) {
               ))}
             </NativeSelect.Field>
           </NativeSelect.Root>
-          <FormHelper>Resolution of the displayed and analyzed curve.</FormHelper>
+          <FormHelper>
+            Resolution of the displayed and analyzed curve. Best results: 1/12
+            octave for algorithm V2 / V3. RAW skips smoothing (not recommended).
+          </FormHelper>
         </Field.Root>
       </SimpleGrid>
     </>

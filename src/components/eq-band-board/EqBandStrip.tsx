@@ -157,6 +157,19 @@ export function EqBandStrip({
         >
           {getFilterTypeLabel(item)}
         </Text>
+
+        {item.safetyAdjusted ? (
+          <Text
+            fontSize="2xs"
+            color={STRIP_CHROME.accent}
+            textAlign="center"
+            lineHeight="1.2"
+            px={0.5}
+            letterSpacing="0.03em"
+          >
+            Safety adjusted
+          </Text>
+        ) : null}
       </Stack>
     </Box>
   );

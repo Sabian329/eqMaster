@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu, session, shell } = require('electron') as typeof import('electron');
+const { app, BrowserWindow, Menu, clipboard, ipcMain, session, shell } =
+  require('electron') as typeof import('electron');
 import type { BrowserWindow as BrowserWindowType, Menu as MenuType } from 'electron';
 import path from 'node:path';
 
@@ -110,12 +111,25 @@ function buildMenu(): MenuType {
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle('clipboard:writeText', (_event, text: unknown) => {
+    clipboard.writeText(typeof text === 'string' ? text : String(text ?? ''));
+    return true;
+  });
+
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'media' || permission === 'mediaKeySystem');
+    callback(
+      permission === 'media' ||
+        permission === 'mediaKeySystem' ||
+        permission === 'clipboard-sanitized-write',
+    );
   });
 
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
-    return permission === 'media' || permission === 'mediaKeySystem';
+    return (
+      permission === 'media' ||
+      permission === 'mediaKeySystem' ||
+      permission === 'clipboard-sanitized-write'
+    );
   });
 
   Menu.setApplicationMenu(buildMenu());

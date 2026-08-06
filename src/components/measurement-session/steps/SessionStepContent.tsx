@@ -1,4 +1,5 @@
 import { Text } from '@chakra-ui/react';
+import { modalStyles } from '../../../theme';
 import type { MeasurementSessionStep } from '../../../types';
 import { getSessionStepDescription } from '../utils';
 
@@ -16,7 +17,7 @@ export function SessionStepContent({
   if (sessionStep === 'mic-test') return null;
 
   return (
-    <Text fontSize="sm" color="gray.300" lineHeight="1.65">
+    <Text {...modalStyles.subtitle} lineHeight="1.65">
       {getSessionStepDescription(sessionStep, isTestMode, allRunsDone)}
     </Text>
   );

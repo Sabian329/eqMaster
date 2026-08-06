@@ -189,16 +189,27 @@ function analyze(
   const usableMax = Math.min(fMax, sampleRate * 0.45);
   const pointCount = 520;
   const curve: CurvePoint[] = [];
-  const octaveHalfWidth = 1 / (2 * smoothing);
+  // smoothing <= 0 → RAW (single FFT bin, no fractional-octave average)
+  const octaveHalfWidth =
+    smoothing > 0 ? 1 / (2 * smoothing) : 0;
 
   for (let i = 0; i < pointCount; i++) {
     const ratio = i / (pointCount - 1);
     const frequency = fMin * Math.pow(usableMax / fMin, ratio);
-    const lowFrequency = frequency / Math.pow(2, octaveHalfWidth);
-    const highFrequency = frequency * Math.pow(2, octaveHalfWidth);
 
-    const lowBin = Math.max(1, Math.floor((lowFrequency * n) / sampleRate));
-    const highBin = Math.min(maxBin, Math.ceil((highFrequency * n) / sampleRate));
+    let lowBin: number;
+    let highBin: number;
+    if (smoothing <= 0) {
+      const bin = Math.round((frequency * n) / sampleRate);
+      lowBin = Math.max(1, Math.min(maxBin, bin));
+      highBin = lowBin;
+    } else {
+      const lowFrequency = frequency / Math.pow(2, octaveHalfWidth);
+      const highFrequency = frequency * Math.pow(2, octaveHalfWidth);
+      lowBin = Math.max(1, Math.floor((lowFrequency * n) / sampleRate));
+      highBin = Math.min(maxBin, Math.ceil((highFrequency * n) / sampleRate));
+    }
+
     const count = Math.max(1, highBin - lowBin + 1);
     const averagePower = (prefix[highBin + 1] - prefix[lowBin]) / count;
     const db =

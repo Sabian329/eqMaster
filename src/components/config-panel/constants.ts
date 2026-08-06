@@ -5,10 +5,11 @@ export const CHANNEL_OPTIONS = [
 ] as const;
 
 export const SMOOTHING_OPTIONS = [
-  { value: 6, label: '1/6 octave' },
   { value: 12, label: '1/12 octave' },
+  { value: 6, label: '1/6 octave' },
   { value: 24, label: '1/24 octave' },
   { value: 48, label: '1/48 octave' },
+  { value: 0, label: 'RAW (expert)' },
 ] as const;
 
 export function formatLevelLabel(level: number): string {
