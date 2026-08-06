@@ -81,10 +81,13 @@ export function PresetExportCard({ state }: PresetExportCardProps) {
           <Field.Label {...fieldStyles.label}>Preset name</Field.Label>
           <Input
             value={presetName}
-            maxLength={80}
+            maxLength={120}
             {...fieldStyles.control}
             onChange={(e) => setPresetName(e.target.value)}
           />
+          <Field.HelperText {...fieldStyles.helper}>
+            Auto-updates from algorithm, smoothing, and measurement date.
+          </Field.HelperText>
         </Field.Root>
       </Grid>
 

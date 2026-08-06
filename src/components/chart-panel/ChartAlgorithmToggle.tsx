@@ -25,7 +25,7 @@ export function ChartAlgorithmToggle({
 				}
 				variant="enclosed"
 			>
-				<Tabs.List {...tabStyles.list} maxW="420px">
+				<Tabs.List {...tabStyles.list} maxW="520px">
 					{EQ_ALGORITHMS.map((algorithm) => (
 						<Tabs.Trigger
 							key={algorithm.id}

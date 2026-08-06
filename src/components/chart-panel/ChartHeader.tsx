@@ -4,11 +4,13 @@ import {
 	Flex,
 	Heading,
 	HStack,
+	NativeSelect,
 	Stack,
 	Text,
 } from "@chakra-ui/react";
 import type { ChartSeries } from "../../types";
-import { ui } from "../../theme";
+import { fieldStyles, ui } from "../../theme";
+import { SMOOTHING_OPTIONS } from "../advanced-setup/constants";
 
 interface ChartHeaderProps {
 	chartSeries: ChartSeries[];
@@ -17,6 +19,9 @@ interface ChartHeaderProps {
 	showCorrectionFills: boolean;
 	onToggleCorrectionFills: () => void;
 	hasCorrectionFills: boolean;
+	smoothing: number;
+	onSmoothingChange: (value: number) => void;
+	smoothingEnabled: boolean;
 }
 
 export function ChartHeader({
@@ -26,6 +31,9 @@ export function ChartHeader({
 	showCorrectionFills,
 	onToggleCorrectionFills,
 	hasCorrectionFills,
+	smoothing,
+	onSmoothingChange,
+	smoothingEnabled,
 }: ChartHeaderProps) {
 	const hasCorrected = chartSeries.some((item) => item.id === "corrected");
 	const hasVerified = chartSeries.some((item) => item.id === "verified");
@@ -75,40 +83,103 @@ export function ChartHeader({
 					</Text>
 				)}
 			</Stack>
-			<Stack gap={2} align="flex-start">
-				<Text
-					fontSize="2xs"
-					color={ui.colors.textDim}
-					textTransform="uppercase"
-					letterSpacing="0.08em"
-					fontFamily={ui.fonts.mono}
-				>
-					Show on chart
-				</Text>
-				<HStack gap={3} fontSize="xs" flexWrap="wrap" align="center">
-					{hasTarget ? (
-						<HStack gap={2} align="center" px={0.5}>
-							<Box
-								w="18px"
-								h="0"
-								borderTopWidth="2px"
-								borderTopStyle="dashed"
-								borderTopColor="#f0f2f5"
-							/>
-							<Text color="gray.50" fontWeight="medium" mb={0}>
-								{targetLegendLabel}
-							</Text>
-						</HStack>
-					) : null}
+			<Stack gap={2} align="flex-end" flexShrink={0}>
+				<HStack gap={2} align="center">
+					<Text
+						fontSize="2xs"
+						color={ui.colors.textDim}
+						textTransform="uppercase"
+						letterSpacing="0.08em"
+						fontFamily={ui.fonts.mono}
+						whiteSpace="nowrap"
+					>
+						Smoothing
+					</Text>
+					<NativeSelect.Root size="sm" w="148px" disabled={!smoothingEnabled}>
+						<NativeSelect.Field
+							{...fieldStyles.control}
+							h="30px"
+							fontSize="xs"
+							value={smoothing}
+							onChange={(e) => onSmoothingChange(Number(e.target.value))}
+							aria-label="Frequency smoothing"
+						>
+							{SMOOTHING_OPTIONS.map((opt) => (
+								<option key={opt.value} value={opt.value}>
+									{opt.label}
+								</option>
+							))}
+						</NativeSelect.Field>
+					</NativeSelect.Root>
+				</HStack>
+				<Stack gap={2} align="flex-start">
+					<Text
+						fontSize="2xs"
+						color={ui.colors.textDim}
+						textTransform="uppercase"
+						letterSpacing="0.08em"
+						fontFamily={ui.fonts.mono}
+					>
+						Show on chart
+					</Text>
+					<HStack gap={3} fontSize="xs" flexWrap="wrap" align="center">
+						{hasTarget ? (
+							<HStack gap={2} align="center" px={0.5}>
+								<Box
+									w="18px"
+									h="0"
+									borderTopWidth="2px"
+									borderTopStyle="dashed"
+									borderTopColor="#f0f2f5"
+								/>
+								<Text color="gray.50" fontWeight="medium" mb={0}>
+									{targetLegendLabel}
+								</Text>
+							</HStack>
+						) : null}
 
-					{toggleableSeries.map((item) => {
-						const visible = isChartSeriesVisible(item.id);
-						return (
+						{toggleableSeries.map((item) => {
+							const visible = isChartSeriesVisible(item.id);
+							return (
+								<Checkbox.Root
+									key={item.id}
+									checked={visible}
+									size="sm"
+									onCheckedChange={() => onToggleChartSeries(item.id)}
+								>
+									<Checkbox.HiddenInput />
+									<HStack gap={2} align="center">
+										<Checkbox.Control
+											borderColor={ui.colors.borderStrong}
+											borderRadius="2px"
+											bg={ui.colors.inset}
+											_checked={{
+												bg: ui.colors.accent,
+												borderColor: ui.colors.accent,
+											}}
+										/>
+										<Checkbox.Label
+											display="flex"
+											alignItems="center"
+											gap={2}
+											color={visible ? ui.colors.textMuted : ui.colors.textDim}
+											opacity={visible ? 1 : 0.55}
+											cursor="pointer"
+											mb={0}
+										>
+											<SeriesSwatch item={item} dimmed={!visible} />
+											<Text>{item.label}</Text>
+										</Checkbox.Label>
+									</HStack>
+								</Checkbox.Root>
+							);
+						})}
+
+						{hasCorrectionFills ? (
 							<Checkbox.Root
-								key={item.id}
-								checked={visible}
+								checked={showCorrectionFills}
 								size="sm"
-								onCheckedChange={() => onToggleChartSeries(item.id)}
+								onCheckedChange={onToggleCorrectionFills}
 							>
 								<Checkbox.HiddenInput />
 								<HStack gap={2} align="center">
@@ -125,56 +196,23 @@ export function ChartHeader({
 										display="flex"
 										alignItems="center"
 										gap={2}
-										color={visible ? ui.colors.textMuted : ui.colors.textDim}
-										opacity={visible ? 1 : 0.55}
+										color={
+											showCorrectionFills
+												? ui.colors.textMuted
+												: ui.colors.textDim
+										}
+										opacity={showCorrectionFills ? 1 : 0.55}
 										cursor="pointer"
 										mb={0}
 									>
-										<SeriesSwatch item={item} dimmed={!visible} />
-										<Text>{item.label}</Text>
+										<CorrectionFillSwatch dimmed={!showCorrectionFills} />
+										<Text>Correction fills</Text>
 									</Checkbox.Label>
 								</HStack>
 							</Checkbox.Root>
-						);
-					})}
-
-					{hasCorrectionFills ? (
-						<Checkbox.Root
-							checked={showCorrectionFills}
-							size="sm"
-							onCheckedChange={onToggleCorrectionFills}
-						>
-							<Checkbox.HiddenInput />
-							<HStack gap={2} align="center">
-								<Checkbox.Control
-									borderColor={ui.colors.borderStrong}
-									borderRadius="2px"
-									bg={ui.colors.inset}
-									_checked={{
-										bg: ui.colors.accent,
-										borderColor: ui.colors.accent,
-									}}
-								/>
-								<Checkbox.Label
-									display="flex"
-									alignItems="center"
-									gap={2}
-									color={
-										showCorrectionFills
-											? ui.colors.textMuted
-											: ui.colors.textDim
-									}
-									opacity={showCorrectionFills ? 1 : 0.55}
-									cursor="pointer"
-									mb={0}
-								>
-									<CorrectionFillSwatch dimmed={!showCorrectionFills} />
-									<Text>Correction fills</Text>
-								</Checkbox.Label>
-							</HStack>
-						</Checkbox.Root>
-					) : null}
-				</HStack>
+						) : null}
+					</HStack>
+				</Stack>
 			</Stack>
 		</Flex>
 	);

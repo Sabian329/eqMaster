@@ -1,12 +1,41 @@
 const { app, BrowserWindow, Menu, clipboard, ipcMain, session, shell } =
   require('electron') as typeof import('electron');
 import type { BrowserWindow as BrowserWindowType, Menu as MenuType } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 
 const isDev = !app.isPackaged;
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+const SAVED_MEASUREMENTS_FILE = 'saved-measurements.json';
 
 let mainWindow: BrowserWindowType | null = null;
+
+function savedMeasurementsPath(): string {
+  return path.join(app.getPath('userData'), SAVED_MEASUREMENTS_FILE);
+}
+
+function readSavedMeasurementsFile(): unknown[] {
+  const filePath = savedMeasurementsPath();
+  try {
+    if (!fs.existsSync(filePath)) return [];
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedMeasurementsFile(items: unknown): boolean {
+  const filePath = savedMeasurementsPath();
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(items ?? [], null, 2), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -115,6 +144,11 @@ app.whenReady().then(() => {
     clipboard.writeText(typeof text === 'string' ? text : String(text ?? ''));
     return true;
   });
+
+  ipcMain.handle('saved-measurements:read', () => readSavedMeasurementsFile());
+  ipcMain.handle('saved-measurements:write', (_event, items: unknown) =>
+    writeSavedMeasurementsFile(items),
+  );
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(

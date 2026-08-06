@@ -15,6 +15,17 @@ export function runCorrectionPipeline(
   options: CorrectionPipelineOptions = {},
 ): AutoEqResult & { suggestions: Suggestion[] } {
   switch (version) {
+    case 'overview':
+      return {
+        suggestions: [],
+        filters: [],
+        preampDb: 0,
+        measured: [],
+        target: [],
+        corrected: [],
+        errorBefore: 0,
+        errorAfter: 0,
+      };
     case 'v3':
       return runAutoEqPipelineV3(rawCurve, {
         ...options,

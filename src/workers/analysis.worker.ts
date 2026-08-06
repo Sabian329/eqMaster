@@ -110,7 +110,6 @@ function analyze(
   sweepOffset: number,
   fMin: number,
   fMax: number,
-  smoothing: number,
   calibration: [number, number][],
 ): AnalysisResult {
   if (recorded.length < 1024) throw new Error('Recording is too short.');
@@ -189,28 +188,15 @@ function analyze(
   const usableMax = Math.min(fMax, sampleRate * 0.45);
   const pointCount = 520;
   const curve: CurvePoint[] = [];
-  // smoothing <= 0 → RAW (single FFT bin, no fractional-octave average)
-  const octaveHalfWidth =
-    smoothing > 0 ? 1 / (2 * smoothing) : 0;
 
+  // Always export RAW (single-bin) magnitude; display smoothing is applied in the UI.
   for (let i = 0; i < pointCount; i++) {
     const ratio = i / (pointCount - 1);
     const frequency = fMin * Math.pow(usableMax / fMin, ratio);
-
-    let lowBin: number;
-    let highBin: number;
-    if (smoothing <= 0) {
-      const bin = Math.round((frequency * n) / sampleRate);
-      lowBin = Math.max(1, Math.min(maxBin, bin));
-      highBin = lowBin;
-    } else {
-      const lowFrequency = frequency / Math.pow(2, octaveHalfWidth);
-      const highFrequency = frequency * Math.pow(2, octaveHalfWidth);
-      lowBin = Math.max(1, Math.floor((lowFrequency * n) / sampleRate));
-      highBin = Math.min(maxBin, Math.ceil((highFrequency * n) / sampleRate));
-    }
-
-    const count = Math.max(1, highBin - lowBin + 1);
+    const bin = Math.round((frequency * n) / sampleRate);
+    const lowBin = Math.max(1, Math.min(maxBin, bin));
+    const highBin = lowBin;
+    const count = 1;
     const averagePower = (prefix[highBin + 1] - prefix[lowBin]) / count;
     const db =
       10 * Math.log10(Math.max(averagePower, 1e-30)) +
@@ -246,7 +232,6 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
       sweepOffset,
       fMin,
       fMax,
-      smoothing,
       calibration,
     } = event.data;
 
@@ -259,7 +244,6 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
       sweepOffset,
       fMin,
       fMax,
-      smoothing,
       calibration || [],
     );
 

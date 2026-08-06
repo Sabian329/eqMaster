@@ -6,6 +6,7 @@ import { ChartV3PanelFromState } from "./ChartV3Panel";
 import { ChartEqEditor } from "./chart-eq-editor";
 import { resolveChartFrequencyRange } from "./constants";
 import { ChartHeader } from "./ChartHeader";
+import { ChartSavedMeasurements } from "./ChartSavedMeasurements";
 import { FrequencyChart } from "./frequency-chart";
 import type { ChartPanelProps } from "./types";
 
@@ -23,6 +24,14 @@ export function ChartPanel({ state }: ChartPanelProps) {
 		averagedRun,
 		autoEqV2IsRunning,
 		autoEqV3IsRunning,
+		smoothing,
+		setSmoothing,
+		curve,
+		savedMeasurements,
+		activeSavedMeasurementId,
+		loadSavedMeasurementById,
+		deleteSavedMeasurementById,
+		generateAndSaveMockMeasurement,
 	} = state;
 	const displayMeta =
 		averagedRun?.meta ??
@@ -37,6 +46,15 @@ export function ChartPanel({ state }: ChartPanelProps) {
 	return (
 		<Card.Root w="full" {...panelStyles.root} id="frequency-chart-panel">
 			<Card.Header {...panelStyles.header}>
+				<ChartSavedMeasurements
+					items={savedMeasurements}
+					activeId={activeSavedMeasurementId}
+					onSelect={loadSavedMeasurementById}
+					onDelete={(id) => {
+						void deleteSavedMeasurementById(id);
+					}}
+					onGenerateMock={generateAndSaveMockMeasurement}
+				/>
 				<ChartHeader
 					chartSeries={chartSeries}
 					isChartSeriesVisible={isChartSeriesVisible}
@@ -44,6 +62,9 @@ export function ChartPanel({ state }: ChartPanelProps) {
 					showCorrectionFills={showCorrectionFills}
 					onToggleCorrectionFills={toggleCorrectionFills}
 					hasCorrectionFills={filterOverlays.length > 0}
+					smoothing={smoothing}
+					onSmoothingChange={setSmoothing}
+					smoothingEnabled={curve.length > 0}
 				/>
 				<ChartAlgorithmToggleFromState state={state} />
 			</Card.Header>
@@ -62,10 +83,18 @@ export function ChartPanel({ state }: ChartPanelProps) {
 						series={visibleChartSeries}
 						fMin={fMin}
 						fMax={fMax}
-						suggestions={state.suggestions}
-						filterOverlays={showCorrectionFills ? filterOverlays : []}
+						suggestions={
+							state.eqAlgorithmVersion === "overview" ? [] : state.suggestions
+						}
+						filterOverlays={
+							state.eqAlgorithmVersion === "overview" || !showCorrectionFills
+								? []
+								: filterOverlays
+						}
 						onAddCustomBand={
-							isAlgorithmLoading ? undefined : state.addCustomBand
+							isAlgorithmLoading || state.eqAlgorithmVersion === "overview"
+								? undefined
+								: state.addCustomBand
 						}
 					/>
 					{isAlgorithmLoading ? (

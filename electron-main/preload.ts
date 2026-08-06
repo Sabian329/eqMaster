@@ -5,6 +5,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   copyText: (text: string) =>
     ipcRenderer.invoke('clipboard:writeText', text) as Promise<boolean>,
+  readSavedMeasurements: () =>
+    ipcRenderer.invoke('saved-measurements:read') as Promise<unknown[]>,
+  writeSavedMeasurements: (items: unknown[]) =>
+    ipcRenderer.invoke('saved-measurements:write', items) as Promise<boolean>,
 });
 
 export {};

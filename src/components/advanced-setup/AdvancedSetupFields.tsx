@@ -5,32 +5,22 @@ import { SweepSection } from "./sections/SweepSection";
 import {
 	CalibrationLevelSection,
 	SessionSettingsSection,
-	TestLoadedPanel,
 } from "./sections/SessionSettingsSection";
 import type { AdvancedSetupFieldsProps } from "./types";
 
-export function AdvancedSetupFields({
-	state,
-	isTestMode = false,
-}: AdvancedSetupFieldsProps) {
-	const hardwareDisabled = isTestMode;
-
+export function AdvancedSetupFields({ state }: AdvancedSetupFieldsProps) {
 	return (
 		<Stack gap={3}>
 			<SetupSection
 				title="Audio routing"
 				subtitle="Select capture and playback devices. Grant browser permissions before measuring."
 			>
-				<DeviceSection
-					state={state}
-					isTestMode={isTestMode}
-					hardwareDisabled={hardwareDisabled}
-				/>
+				<DeviceSection state={state} />
 			</SetupSection>
 
 			<SetupSection
 				title="Sweep parameters"
-				subtitle="Logarithmic sine sweep range, duration, and analysis smoothing."
+				subtitle="Logarithmic sine sweep range and duration."
 			>
 				<SweepSection state={state} />
 			</SetupSection>
@@ -39,21 +29,15 @@ export function AdvancedSetupFields({
 				title="Session"
 				subtitle="Number of averaged runs per measurement session."
 			>
-				<SessionSettingsSection state={state} isTestMode={isTestMode} />
+				<SessionSettingsSection state={state} />
 			</SetupSection>
 
 			<SetupSection
 				title="Calibration & verification"
 				subtitle="Optional mic correction file and pre-flight level check."
 			>
-				<CalibrationLevelSection
-					state={state}
-					isTestMode={isTestMode}
-					hardwareDisabled={hardwareDisabled}
-				/>
+				<CalibrationLevelSection state={state} />
 			</SetupSection>
-
-			{isTestMode && <TestLoadedPanel state={state} />}
 		</Stack>
 	);
 }

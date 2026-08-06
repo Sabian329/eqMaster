@@ -6,7 +6,7 @@ import { ResultsEmptyState } from './ResultsEmptyState';
 import type { ResultsPanelProps } from './types';
 
 export function ResultsPanel({ state }: ResultsPanelProps) {
-  const { curve, exportCsv, exportJson, isTestMode } = state;
+  const { curve, exportCsv, exportJson } = state;
 
   const sectionRef = useRef<HTMLDivElement>(null);
   const prevCurveLen = useRef(0);
@@ -23,7 +23,7 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
   if (!curve.length) {
     return (
       <div ref={sectionRef}>
-        <ResultsEmptyState isTestMode={isTestMode} />
+        <ResultsEmptyState />
       </div>
     );
   }

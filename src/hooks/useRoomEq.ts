@@ -23,13 +23,20 @@ import type {
 	MeasurementRun,
 	MeasurementSessionStep,
 	SelectedOutputDevice,
-	SetupMode,
 	Suggestion,
 } from "../types";
-import { buildPresetText } from "../utils/preset";
+import { buildDynamicPresetName, buildPresetText } from "../utils/preset";
 import { downloadText, safePresetFilename } from "../utils/download";
 import { formatFrequency, meterOptimalRangeLabel } from "../utils/format";
 import { averageCurves } from "../utils/averageCurves";
+import { applyDisplaySmoothing } from "../utils/smoothFractionalOctave";
+import {
+	addSavedMeasurement,
+	createSavedMeasurement,
+	loadSavedMeasurements,
+	removeSavedMeasurement,
+} from "../utils/savedMeasurementsStorage";
+import type { SavedMeasurement } from "../types/savedMeasurement";
 import { PRO_MAX_AUTO_BANDS } from "../utils/autoEqBridge";
 import { getMockPresetLabel } from "../components/advanced-setup/constants";
 import { runCorrectionPipeline } from "../utils/correctionPipeline";
@@ -68,8 +75,6 @@ import {
 } from "../config/eqShapePresets";
 import { MOCK_PRESET_COUNT } from "../components/advanced-setup/constants";
 import {
-	runMockMeasurement,
-	runMockVerification,
 	createMockMeasurementRun,
 } from "../utils/mockMeasurement";
 import {
@@ -77,6 +82,12 @@ import {
 	SWEEP_LEVEL_DB,
 	type MeasurementPresetId,
 } from "../config/measurementPresets";
+import {
+	measurementPresetToNameTag,
+	resolveMeasurementNameLabel,
+	type MeasurementNameTagId,
+} from "../config/measurementNameTags";
+import { formatSavedMeasurementName } from "../utils/savedMeasurementsStorage";
 import { bandColorForIndex } from "../config/bandColors";
 import type { FilterOverlay } from "../chart/drawFilterOverlays";
 
@@ -171,6 +182,29 @@ function buildChartSeries(
 	return series;
 }
 
+function resolveRawCurve(run: MeasurementRun): CurvePoint[] {
+	if (run.rawCurve?.length) return run.rawCurve;
+	return run.curve;
+}
+
+function materializeRuns(
+	runs: MeasurementRun[],
+	smoothing: number,
+): MeasurementRun[] {
+	return runs.map((run) => {
+		const rawCurve = resolveRawCurve(run).map((point) => ({ ...point }));
+		return {
+			...run,
+			rawCurve,
+			curve: sanitizeCurve(applyDisplaySmoothing(rawCurve, smoothing)),
+			meta: {
+				...run.meta,
+				smoothing,
+			},
+		};
+	});
+}
+
 export function useRoomEq() {
 	const env = useMemo(() => checkEnvironment(), []);
 
@@ -192,6 +226,12 @@ export function useRoomEq() {
 	const [fEnd, setFEnd] = useState(20000);
 	const [duration, setDuration] = useState(10);
 	const [smoothing, setSmoothing] = useState(12);
+	const [savedMeasurements, setSavedMeasurements] = useState<
+		SavedMeasurement[]
+	>([]);
+	const [activeSavedMeasurementId, setActiveSavedMeasurementId] = useState<
+		string | null
+	>(null);
 	const [measurementCount, setMeasurementCount] = useState<MeasurementCount>(1);
 	const [safetyCheck, setSafetyCheck] = useState(false);
 	const [activeMeasurementPresetId, setActiveMeasurementPresetId] =
@@ -218,13 +258,6 @@ export function useRoomEq() {
 	const [measurementRuns, setMeasurementRuns] = useState<MeasurementRun[]>([]);
 	const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
 
-	const [setupMode, setSetupMode] = useState<SetupMode>("live");
-	const [mockLibraryGeneration, setMockLibraryGeneration] = useState(0);
-	const [mockPresets, setMockPresets] = useState<MockPreset[]>([]);
-	const [selectedMockPresetId, setSelectedMockPresetId] = useState(1);
-
-	const isTestMode = setupMode === "test";
-
 	const [sessionOpen, setSessionOpen] = useState(false);
 	const [sessionStep, setSessionStep] =
 		useState<MeasurementSessionStep>("mic-test");
@@ -237,8 +270,20 @@ export function useRoomEq() {
 	const [sessionMeterActive, setSessionMeterActive] = useState(false);
 	const [sessionMeterDb, setSessionMeterDb] = useState(-Infinity);
 	const [sessionWarning, setSessionWarning] = useState<string | null>(null);
+	const [sessionNameTagId, setSessionNameTagId] =
+		useState<MeasurementNameTagId>("room");
+	const [sessionNameCustom, setSessionNameCustom] = useState("");
+	const [measurementLabel, setMeasurementLabel] = useState<string | null>(
+		"Room",
+	);
 
-	const [presetName, setPresetName] = useState("Room EQ");
+	const [presetName, setPresetName] = useState(() =>
+		buildDynamicPresetName({
+			algorithmVersion: "v1",
+			smoothing: 12,
+			label: "Room",
+		}),
+	);
 	const [presetPreamp, setPresetPreamp] = useState(0);
 	const [presetStatus, setPresetStatus] = useState("");
 	const [suggestionQOverrides, setSuggestionQOverrides] = useState<
@@ -252,7 +297,7 @@ export function useRoomEq() {
 	>({});
 	const [customSuggestions, setCustomSuggestions] = useState<Suggestion[]>([]);
 	const [eqAlgorithmVersion, setEqAlgorithmVersion] =
-		useState<EqAlgorithmVersion>("v1");
+		useState<EqAlgorithmVersion>("overview");
 	const [autoEqV2Progress, setAutoEqV2Progress] =
 		useState<AutoEqProgress | null>(null);
 	const [autoEqV2Result, setAutoEqV2Result] = useState<ReturnType<
@@ -376,9 +421,8 @@ export function useRoomEq() {
 		return "This browser does not support Web Audio output selection. The system default output will be used.";
 	}, [env]);
 
-	const measureEnabled = isTestMode
-		? !running && !meterActive && !sessionOpen
-		: env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
+	const measureEnabled =
+		env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
 
 	const targetCurve = useMemo(() => {
 		if (!curve.length) return [];
@@ -575,7 +619,9 @@ export function useRoomEq() {
 			? autoEqV3Result
 			: eqAlgorithmVersion === "v2"
 				? autoEqV2Result
-				: autoEqV1;
+				: eqAlgorithmVersion === "v1"
+					? autoEqV1
+					: null;
 
 	useEffect(() => {
 		if (autoEq) {
@@ -667,6 +713,7 @@ export function useRoomEq() {
 	);
 
 	const filterOverlays = useMemo((): FilterOverlay[] => {
+		if (eqAlgorithmVersion === "overview") return [];
 		return suggestions
 			.filter(
 				(item) =>
@@ -680,7 +727,7 @@ export function useRoomEq() {
 				q: item.q,
 				color: bandColorForIndex(index),
 			}));
-	}, [suggestions]);
+	}, [suggestions, eqAlgorithmVersion]);
 
 	const globalBandQ = useMemo(() => {
 		if (!suggestions.length) return 1;
@@ -803,7 +850,7 @@ export function useRoomEq() {
 	}, []);
 
 	const correctedCurve = useMemo(() => {
-		if (!curve.length) return [];
+		if (!curve.length || eqAlgorithmVersion === "overview") return [];
 		// V3 predicted = measured + RBJ filter response (no preamp, no display clamp).
 		if (eqAlgorithmVersion === "v3") {
 			return buildCorrectedCurve(curve, suggestions, 0, {
@@ -838,7 +885,8 @@ export function useRoomEq() {
 		!verificationRunning &&
 		!sessionOpen &&
 		!meterActive &&
-		(isTestMode || (env.ready && safetyCheck));
+		env.ready &&
+		safetyCheck;
 
 	const clearVerification = useCallback(() => {
 		setVerificationCurve(null);
@@ -847,6 +895,10 @@ export function useRoomEq() {
 
 	const chartSeries = useMemo(() => {
 		const base = buildChartSeries(measurementRuns, averagedRun);
+		if (eqAlgorithmVersion === "overview") {
+			return base;
+		}
+
 		const overlays: ChartSeries[] = [];
 
 		if (targetCurve.length) {
@@ -887,10 +939,10 @@ export function useRoomEq() {
 	}, [
 		measurementRuns,
 		averagedRun,
+		eqAlgorithmVersion,
 		targetCurve,
 		correctedCurve,
 		verificationCurve,
-		FLAT_TARGET_LABEL,
 		targetSeriesLabel,
 	]);
 
@@ -925,10 +977,41 @@ export function useRoomEq() {
 		}));
 	}, []);
 
+	const sessionNameLabel = useMemo(
+		() => resolveMeasurementNameLabel(sessionNameTagId, sessionNameCustom),
+		[sessionNameCustom, sessionNameTagId],
+	);
+
+	const sessionSaveNamePreview = useMemo(() => {
+		const createdAt = new Date();
+		return formatSavedMeasurementName(fStart, fEnd, createdAt, sessionNameLabel);
+	}, [fEnd, fStart, sessionNameLabel]);
+
 	const presetText = useMemo(
 		() => buildPresetText(presetName, presetPreamp, suggestions),
 		[presetName, presetPreamp, suggestions],
 	);
+
+	useEffect(() => {
+		const activeSaved = activeSavedMeasurementId
+			? savedMeasurements.find((item) => item.id === activeSavedMeasurementId)
+			: null;
+		setPresetName(
+			buildDynamicPresetName({
+				algorithmVersion: eqAlgorithmVersion,
+				smoothing,
+				date: activeSaved?.createdAt ?? measurementMeta?.date ?? new Date(),
+				label: activeSaved?.label ?? measurementLabel,
+			}),
+		);
+	}, [
+		eqAlgorithmVersion,
+		smoothing,
+		measurementMeta?.date,
+		activeSavedMeasurementId,
+		savedMeasurements,
+		measurementLabel,
+	]);
 
 	const getDeviceLabels = useCallback(() => {
 		const inputLabel =
@@ -979,17 +1062,33 @@ export function useRoomEq() {
 	);
 
 	const applySessionResults = useCallback(
-		(runs: MeasurementRun[]) => {
+		(
+			runs: MeasurementRun[],
+			options?: {
+				preserveVerification?: boolean;
+				smoothingOverride?: number;
+				statusMessage?: string;
+			},
+		) => {
 			if (!runs.length) return;
 
-			const averagedCurve = sanitizeCurve(
-				averageCurves(runs.map((run) => run.curve)),
+			const effectiveSmoothing = options?.smoothingOverride ?? smoothing;
+			const materialized = materializeRuns(runs, effectiveSmoothing);
+			const averagedRaw = sanitizeCurve(
+				averageCurves(materialized.map((run) => run.rawCurve)),
 			);
-			const baseMeta = runs[runs.length - 1].meta;
+			const averagedCurve = sanitizeCurve(
+				applyDisplaySmoothing(averagedRaw, effectiveSmoothing),
+			);
+			const baseMeta = {
+				...materialized[materialized.length - 1].meta,
+				smoothing: effectiveSmoothing,
+			};
 
 			const average: MeasurementRun = {
 				index: 0,
-				label: runs.length > 1 ? "Average" : runs[0].label,
+				label: materialized.length > 1 ? "Average" : materialized[0].label,
+				rawCurve: averagedRaw,
 				curve: averagedCurve,
 				suggestions: [],
 				meta: {
@@ -998,27 +1097,100 @@ export function useRoomEq() {
 				},
 			};
 
-			setMeasurementRuns(runs);
-			setAveragedRun(runs.length > 1 ? average : null);
+			setMeasurementRuns(materialized);
+			setAveragedRun(materialized.length > 1 ? average : null);
 			setCurve(averagedCurve);
+			setMeasurementMeta(baseMeta);
+
+			if (options?.preserveVerification) {
+				// Display smoothing changed — previous verification / manual EQ edits
+				// no longer match the curve used for analysis.
+				clearVerification();
+				setCustomSuggestions([]);
+				setRemovedSuggestionKeys({});
+				return;
+			}
+
 			setCustomSuggestions([]);
 			setRemovedSuggestionKeys({});
 			clearVerification();
-			setMeasurementMeta(baseMeta);
 			setPresetStatus("");
 			setStatus(
-				baseMeta.recorderMode === "mock"
-					? runs.length > 1
-						? `Mock session loaded — averaged ${runs.length} runs`
-						: "Mock measurement loaded"
-					: runs.length > 1
-						? `Session complete — averaged ${runs.length} measurements`
-						: "Measurement complete",
+				options?.statusMessage ??
+					(baseMeta.recorderMode === "mock"
+						? materialized.length > 1
+							? `Mock session loaded — averaged ${materialized.length} runs`
+							: "Mock measurement loaded"
+						: materialized.length > 1
+							? `Session complete — averaged ${materialized.length} measurements`
+							: "Measurement complete"),
 				100,
 			);
 		},
-		[setStatus, clearVerification],
+		[setStatus, clearVerification, smoothing],
 	);
+
+	useEffect(() => {
+		let cancelled = false;
+		void loadSavedMeasurements().then((items) => {
+			if (!cancelled) setSavedMeasurements(items);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	const persistLiveMeasurement = useCallback(
+		async (
+			runs: MeasurementRun[],
+			label: string,
+			options?: { allowMock?: boolean },
+		) => {
+			const entry = createSavedMeasurement(runs, { smoothing, label });
+			if (!entry) return;
+			if (entry.recorderMode === "mock" && !options?.allowMock) return;
+			const next = await addSavedMeasurement(savedMeasurements, entry);
+			setSavedMeasurements(next);
+			setActiveSavedMeasurementId(entry.id);
+			setMeasurementLabel(label);
+		},
+		[savedMeasurements, smoothing],
+	);
+
+	const loadSavedMeasurementById = useCallback(
+		(id: string) => {
+			const entry = savedMeasurements.find((item) => item.id === id);
+			if (!entry) return;
+			setSmoothing(entry.smoothing);
+			setActiveSavedMeasurementId(entry.id);
+			setMeasurementLabel(entry.label ?? null);
+			applySessionResults(entry.runs, {
+				smoothingOverride: entry.smoothing,
+				statusMessage: `Loaded saved measurement — ${entry.name}`,
+			});
+		},
+		[applySessionResults, savedMeasurements],
+	);
+
+	const deleteSavedMeasurementById = useCallback(
+		async (id: string) => {
+			const next = await removeSavedMeasurement(savedMeasurements, id);
+			setSavedMeasurements(next);
+			if (activeSavedMeasurementId === id) {
+				setActiveSavedMeasurementId(null);
+			}
+		},
+		[activeSavedMeasurementId, savedMeasurements],
+	);
+
+	// Re-apply fractional-octave smoothing to the stored RAW curves.
+	useEffect(() => {
+		if (!measurementRuns.length) return;
+		if (measurementRuns.every((run) => run.meta.smoothing === smoothing)) {
+			return;
+		}
+		applySessionResults(measurementRuns, { preserveVerification: true });
+	}, [smoothing, measurementRuns, applySessionResults]);
 
 	const buildMockPreset = useCallback(
 		(presetId: number, seedSalt: number): MockPreset => {
@@ -1046,6 +1218,7 @@ export function useRoomEq() {
 						measurementCount > 1
 							? `Mock ${presetId} · run ${runIndex}`
 							: `Mock ${presetId}`,
+					rawCurve: mockCurve,
 					curve: mockCurve,
 					suggestions: [],
 					meta: measurementMeta,
@@ -1069,52 +1242,22 @@ export function useRoomEq() {
 		],
 	);
 
-	const regenerateMockLibrary = useCallback(
-		(selectId = selectedMockPresetId) => {
-			const nextGeneration = mockLibraryGeneration + 1;
-			setMockLibraryGeneration(nextGeneration);
-
-			const presets = Array.from({ length: MOCK_PRESET_COUNT }, (_, index) =>
-				buildMockPreset(index + 1, nextGeneration * 1000),
+	const generateAndSaveMockMeasurement = useCallback(
+		(options: { presetId: number; label: string }) => {
+			const presetId = Math.min(
+				MOCK_PRESET_COUNT,
+				Math.max(1, Math.round(options.presetId)),
 			);
-			setMockPresets(presets);
-
-			const safeId = Math.min(Math.max(1, selectId), MOCK_PRESET_COUNT);
-			setSelectedMockPresetId(safeId);
-			applySessionResults(presets[safeId - 1].runs);
+			const preset = buildMockPreset(presetId, Date.now() % 100_000);
+			applySessionResults(preset.runs, {
+				statusMessage: `Mock measurement generated — ${options.label}`,
+			});
+			void persistLiveMeasurement(preset.runs, options.label, {
+				allowMock: true,
+			});
 		},
-		[
-			applySessionResults,
-			buildMockPreset,
-			mockLibraryGeneration,
-			selectedMockPresetId,
-		],
+		[applySessionResults, buildMockPreset, persistLiveMeasurement],
 	);
-
-	const selectMockPreset = useCallback(
-		(presetId: number) => {
-			const preset = mockPresets.find((item) => item.id === presetId);
-			if (!preset) return;
-			setSelectedMockPresetId(presetId);
-			applySessionResults(preset.runs);
-		},
-		[applySessionResults, mockPresets],
-	);
-
-	const loadMockDemoResults = regenerateMockLibrary;
-
-	useEffect(() => {
-		if (setupMode !== "test" || sessionOpen || running) return;
-		if (mockPresets.length >= MOCK_PRESET_COUNT) return;
-		regenerateMockLibrary(selectedMockPresetId);
-	}, [
-		setupMode,
-		sessionOpen,
-		running,
-		mockPresets.length,
-		regenerateMockLibrary,
-		selectedMockPresetId,
-	]);
 
 	const stopSessionMeter = useCallback(async () => {
 		await sessionMeterRef.current?.stop();
@@ -1221,17 +1364,16 @@ export function useRoomEq() {
 		clearVerification();
 
 		setSessionOpen(true);
-		setSessionStep(isTestMode ? "ready" : "mic-test");
+		setSessionStep("mic-test");
 		setSessionTargetCount(measurementCount);
 		setSessionRuns([]);
 		setSessionMeterDb(-Infinity);
 		setSessionWarning(null);
-		setStatus(
-			isTestMode
-				? "Test session started — mock data only"
-				: "Measurement session started",
-			0,
+		setSessionNameTagId(
+			measurementPresetToNameTag(activeMeasurementPresetId),
 		);
+		setSessionNameCustom("");
+		setStatus("Measurement session started", 0);
 	};
 
 	const handleSessionSkipMicTest = () => {
@@ -1305,31 +1447,21 @@ export function useRoomEq() {
 		};
 
 		try {
-			const { inputLabel, outputLabel } = getDeviceLabels();
-			const result = isTestMode
-				? await runMockMeasurement(
-						{
-							fMin: fStart,
-							fMax: fEnd,
-							smoothing,
-							durationSeconds: duration,
-							levelDb: SWEEP_LEVEL_DB,
-							channel,
-							runIndex,
-							inputLabel,
-							outputLabel,
-						},
-						setStatus,
-						onAudioFrame,
-						abortSignal,
-					)
-				: await executeMeasurement(setStatus, onAudioFrame, abortSignal);
+			const result = await executeMeasurement(
+				setStatus,
+				onAudioFrame,
+				abortSignal,
+			);
 			const run: MeasurementRun = {
 				index: runIndex,
-				label: isTestMode ? `Mock ${runIndex}` : `Run ${runIndex}`,
-				curve: result.curve,
+				label: `Run ${runIndex}`,
+				rawCurve: result.curve,
+				curve: sanitizeCurve(applyDisplaySmoothing(result.curve, smoothing)),
 				suggestions: result.suggestions,
-				meta: result.measurementMeta,
+				meta: {
+					...result.measurementMeta,
+					smoothing,
+				},
 			};
 
 			if (replacingRunIndex) {
@@ -1344,12 +1476,8 @@ export function useRoomEq() {
 			setSessionStep("run-complete");
 			setStatus(
 				replacingRunIndex
-					? isTestMode
-						? `Mock measurement ${runIndex} replaced`
-						: `Measurement ${runIndex} replaced`
-					: isTestMode
-						? `Mock measurement ${runIndex} complete`
-						: `Measurement ${runIndex} complete`,
+					? `Measurement ${runIndex} replaced`
+					: `Measurement ${runIndex} complete`,
 				100,
 			);
 		} catch (error) {
@@ -1387,8 +1515,10 @@ export function useRoomEq() {
 
 	const handleSessionFinish = async () => {
 		if (!sessionRuns.length) return;
+		const label = sessionNameLabel;
 		await stopSessionMeter();
 		applySessionResults(sessionRuns);
+		void persistLiveMeasurement(sessionRuns, label);
 		setSessionOpen(false);
 		setSessionStep("mic-test");
 		setSessionRuns([]);
@@ -1431,45 +1561,25 @@ export function useRoomEq() {
 			const { inputLabel, outputLabel } = getDeviceLabels();
 			const eqApply = eqApplyProfile;
 
-			if (isTestMode) {
-				const result = await runMockVerification(
-					{
-						fMin: fStart,
-						fMax: fEnd,
-						smoothing,
-						durationSeconds: duration,
-						levelDb: SWEEP_LEVEL_DB,
-						channel,
-						runIndex: 1,
-						inputLabel,
-						outputLabel,
-						baselineCurve: curve,
-						suggestions,
-						preampDb: presetPreamp,
-					},
-					setStatus,
-				);
-				setVerificationCurve(result.curve);
-				setVerificationMeta(result.measurementMeta);
-			} else {
-				const result = await runMeasurement({
-					inputDeviceId,
-					outputDeviceId,
-					channel,
-					fMin: fStart,
-					fMax: fEnd,
-					durationSeconds: duration,
-					smoothing,
-					levelDb: SWEEP_LEVEL_DB,
-					calibration,
-					inputLabel,
-					outputLabel,
-					onStatus: setStatus,
-					eqApply,
-				});
-				setVerificationCurve(result.curve);
-				setVerificationMeta(result.measurementMeta);
-			}
+			const result = await runMeasurement({
+				inputDeviceId,
+				outputDeviceId,
+				channel,
+				fMin: fStart,
+				fMax: fEnd,
+				durationSeconds: duration,
+				smoothing,
+				levelDb: SWEEP_LEVEL_DB,
+				calibration,
+				inputLabel,
+				outputLabel,
+				onStatus: setStatus,
+				eqApply,
+			});
+			setVerificationCurve(
+				sanitizeCurve(applyDisplaySmoothing(result.curve, smoothing)),
+			);
+			setVerificationMeta(result.measurementMeta);
 
 			setStatus(
 				"Verification complete — compare green Verified vs orange predicted",
@@ -1488,14 +1598,11 @@ export function useRoomEq() {
 		verificationRunning,
 		getDeviceLabels,
 		eqApplyProfile,
-		isTestMode,
 		fStart,
 		fEnd,
 		smoothing,
 		duration,
 		channel,
-		suggestions,
-		presetPreamp,
 		inputDeviceId,
 		outputDeviceId,
 		calibration,
@@ -1583,6 +1690,8 @@ export function useRoomEq() {
 		setFEnd(preset.fEnd);
 		setDuration(preset.duration);
 		setSmoothing(preset.smoothing);
+		setSessionNameTagId(measurementPresetToNameTag(id));
+		setMeasurementLabel(preset.name === "Car Audio" ? "Car" : preset.name);
 	}, []);
 
 	return {
@@ -1606,6 +1715,11 @@ export function useRoomEq() {
 		setDuration,
 		smoothing,
 		setSmoothing,
+		savedMeasurements,
+		activeSavedMeasurementId,
+		loadSavedMeasurementById,
+		deleteSavedMeasurementById,
+		generateAndSaveMockMeasurement,
 		measurementCount,
 		setMeasurementCount,
 		safetyCheck,
@@ -1620,14 +1734,6 @@ export function useRoomEq() {
 		meterActive,
 		meterDb,
 		measureEnabled,
-		setupMode,
-		setSetupMode,
-		isTestMode,
-		mockPresets,
-		selectedMockPresetId,
-		selectMockPreset,
-		regenerateMockLibrary,
-		loadMockDemoResults,
 		isMockMeasurement: measurementMeta?.recorderMode === "mock",
 		curve,
 		suggestions,
@@ -1682,6 +1788,12 @@ export function useRoomEq() {
 		sessionMeterActive,
 		sessionMeterDb,
 		sessionWarning,
+		sessionNameTagId,
+		setSessionNameTagId,
+		sessionNameCustom,
+		setSessionNameCustom,
+		sessionNameLabel,
+		sessionSaveNamePreview,
 		getSessionAudioFrame,
 		presetName,
 		setPresetName,

@@ -582,33 +582,6 @@ function buildResonantRoomEnvelope(frequency: number, runIndex: number): number 
   return db;
 }
 
-/** Gentle 1/N-oct smoothing to mimic analyzed curve (not a perfect comb). */
-function smoothMockCurve(points: CurvePoint[], fraction: number): CurvePoint[] {
-  if (fraction <= 0) return points.map((point) => ({ ...point }));
-
-  const sigmaOctaves = 1 / fraction / 2.355;
-  const maximumDistance = sigmaOctaves * 2.5;
-
-  return points.map((point) => {
-    let weightedSum = 0;
-    let totalWeight = 0;
-
-    for (const candidate of points) {
-      const distance = Math.log2(candidate.frequency / point.frequency);
-      if (Math.abs(distance) > maximumDistance) continue;
-
-      const weight = Math.exp(-0.5 * (distance / sigmaOctaves) ** 2);
-      weightedSum += candidate.db * weight;
-      totalWeight += weight;
-    }
-
-    return {
-      frequency: point.frequency,
-      db: totalWeight > 0 ? weightedSum / totalWeight : point.db,
-    };
-  });
-}
-
 function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
   const usableMax = Math.min(options.fMax, 20000);
   const pointCount = 520;
@@ -697,19 +670,8 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
     db: point.db - normalization,
   }));
 
-  // Keep Mock 5 intentionally jagged — minimal smoothing only.
-  // smoothing <= 0 → RAW (no fractional-octave smoothing).
-  const smoothFraction =
-    options.smoothing <= 0
-      ? 0
-      : resonantPreset === 5
-        ? Math.max(48, options.smoothing)
-        : resonantPreset
-          ? Math.max(12, options.smoothing)
-          : Math.max(6, options.smoothing);
-  const smoothed = smoothMockCurve(normalized, smoothFraction);
-
-  return sanitizeCurve(smoothed);
+  // Always keep mock source curve RAW — display smoothing is applied in the UI.
+  return sanitizeCurve(normalized);
 }
 
 export function createMockMeasurementRun(options: MockMeasurementOptions): {

@@ -1,7 +1,5 @@
 export type MeasurementCount = 1 | 2 | 3;
 
-export type SetupMode = 'live' | 'test';
-
 export type MeasurementSessionStep =
   | 'mic-test'
   | 'ready'
@@ -11,6 +9,9 @@ export type MeasurementSessionStep =
 export interface MeasurementRun {
   index: number;
   label: string;
+  /** Unsmoothed analysis curve (source of truth for display smoothing). */
+  rawCurve: CurvePoint[];
+  /** Display / EQ curve after current fractional-octave smoothing. */
   curve: CurvePoint[];
   suggestions: Suggestion[];
   meta: MeasurementMeta;

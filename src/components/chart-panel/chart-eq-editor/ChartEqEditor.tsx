@@ -8,13 +8,14 @@ export function ChartEqEditor({ state }: ChartEqEditorProps) {
   const {
     curve,
     suggestions,
+    eqAlgorithmVersion,
     setSuggestionQ,
     setSuggestionGain,
     toggleSuggestionEnabled,
     removeBand,
   } = state;
 
-  if (!curve.length) return null;
+  if (!curve.length || eqAlgorithmVersion === 'overview') return null;
 
   return (
     <Box borderTopWidth="1px" borderColor={ui.colors.border} bg={ui.colors.inset}>

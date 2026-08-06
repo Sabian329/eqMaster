@@ -1,4 +1,4 @@
-export type EqAlgorithmVersion = "v1" | "v2" | "v3";
+export type EqAlgorithmVersion = "overview" | "v1" | "v2" | "v3";
 
 export interface EqAlgorithmInfo {
 	id: EqAlgorithmVersion;
@@ -7,6 +7,12 @@ export interface EqAlgorithmInfo {
 }
 
 export const EQ_ALGORITHMS: EqAlgorithmInfo[] = [
+	{
+		id: "overview",
+		label: "Overview",
+		description:
+			"Measurement results only — no Auto EQ. Switch to V1 / V2 / V3 to generate correction.",
+	},
 	{
 		id: "v1",
 		label: "V1.0.0",
@@ -29,4 +35,10 @@ export const EQ_ALGORITHMS: EqAlgorithmInfo[] = [
 
 export function getEqAlgorithm(id: EqAlgorithmVersion): EqAlgorithmInfo {
 	return EQ_ALGORITHMS.find((item) => item.id === id) ?? EQ_ALGORITHMS[0];
+}
+
+export function isAutoEqAlgorithm(
+	version: EqAlgorithmVersion,
+): version is Exclude<EqAlgorithmVersion, "overview"> {
+	return version === "v1" || version === "v2" || version === "v3";
 }

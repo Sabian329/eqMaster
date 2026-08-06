@@ -6,6 +6,7 @@ import { CompletedRunsList } from './CompletedRunsList';
 import { SessionFooter } from './SessionFooter';
 import { SessionHeader } from './SessionHeader';
 import { MeasurementAuroraPanel } from './MeasurementAuroraPanel';
+import { SessionMeasurementNameFields } from './SessionMeasurementNameFields';
 import { MicTestStep } from './steps/MicTestStep';
 import { SessionStepContent } from './steps/SessionStepContent';
 import type { MeasurementSessionModalProps } from './types';
@@ -22,7 +23,6 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
     running,
     statusText,
     progress,
-    isTestMode,
     getSessionAudioFrame,
     handleSessionSkipMicTest,
     handleSessionStartMeter,
@@ -34,12 +34,20 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
     handleSessionFinish,
     handleSessionCancel,
     handleSessionDismissWarning,
+    sessionNameTagId,
+    setSessionNameTagId,
+    sessionNameCustom,
+    setSessionNameCustom,
+    sessionSaveNamePreview,
   } = state;
 
   const nextRunNumber = sessionRuns.length + 1;
   const canFinish = sessionRuns.length > 0;
   const allRunsDone = sessionRuns.length >= sessionTargetCount;
   const lastCompletedRunNumber = sessionRuns.length;
+  const showNameFields =
+    canFinish &&
+    (sessionStep === 'ready' || sessionStep === 'run-complete');
 
   const showProgress = sessionStep === 'measuring' || sessionStep === 'run-complete';
 
@@ -67,10 +75,9 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
                 />
               )}
 
-              <MeasurementAuroraPanel
-                active={sessionStep === 'measuring'}
-                getAudioFrame={getSessionAudioFrame}
-              />
+              {sessionStep === 'measuring' ? (
+                <MeasurementAuroraPanel getAudioFrame={getSessionAudioFrame} />
+              ) : null}
 
               <Box {...modalStyles.bodyInner}>
                 <Stack gap={4}>
@@ -85,7 +92,6 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
 
                   <SessionStepContent
                     sessionStep={sessionStep}
-                    isTestMode={isTestMode}
                     allRunsDone={allRunsDone}
                   />
 
@@ -101,6 +107,16 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
                     running={running}
                     onRedoRun={handleSessionRedoMeasurement}
                   />
+
+                  {showNameFields ? (
+                    <SessionMeasurementNameFields
+                      tagId={sessionNameTagId}
+                      customLabel={sessionNameCustom}
+                      onTagChange={setSessionNameTagId}
+                      onCustomLabelChange={setSessionNameCustom}
+                      previewName={sessionSaveNamePreview}
+                    />
+                  ) : null}
                 </Stack>
               </Box>
             </Stack>
@@ -114,7 +130,6 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
               allRunsDone={allRunsDone}
               nextRunNumber={nextRunNumber}
               lastCompletedRunNumber={lastCompletedRunNumber}
-              isTestMode={isTestMode}
               onSkipMicTest={handleSessionSkipMicTest}
               onRunMeasurement={() => void handleSessionRunMeasurement()}
               onStopMeasurement={handleSessionStopMeasurement}

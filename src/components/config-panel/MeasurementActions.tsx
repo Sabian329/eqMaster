@@ -8,7 +8,6 @@ export function MeasurementActions({ state }: MeasurementActionsProps) {
     safetyCheck,
     setSafetyCheck,
     measureEnabled,
-    isTestMode,
     handleStartSession,
     statusText,
     progress,
@@ -23,36 +22,27 @@ export function MeasurementActions({ state }: MeasurementActionsProps) {
         justify="space-between"
       >
         <Stack gap={2} flex={1}>
-          <Text {...launchPanelStyles.title}>
-            {isTestMode ? 'Ready to generate mock data' : 'Ready to measure'}
-          </Text>
-          {isTestMode ? (
-            <Text {...launchPanelStyles.subtitle}>
-              Test mode uses a synthetic room response with known peaks and dips. No safety
-              checklist or audio hardware is required.
-            </Text>
-          ) : (
-            <Checkbox.Root
-              checked={safetyCheck}
-              onCheckedChange={(details) => setSafetyCheck(!!details.checked)}
-              alignItems="flex-start"
-              gap={3}
-              maxW="560px"
-            >
-              <Checkbox.HiddenInput />
-              <Checkbox.Control
-                mt={0.5}
-                borderColor={ui.colors.borderStrong}
-                borderRadius="2px"
-                bg={ui.colors.inset}
-                _checked={{ bg: ui.colors.accent, borderColor: ui.colors.accent }}
-              />
-              <Checkbox.Label fontSize="xs" lineHeight="1.6" color={ui.colors.textMuted}>
-                Volume is low, direct monitoring is off, and the microphone is positioned
-                safely away from feedback.
-              </Checkbox.Label>
-            </Checkbox.Root>
-          )}
+          <Text {...launchPanelStyles.title}>Ready to measure</Text>
+          <Checkbox.Root
+            checked={safetyCheck}
+            onCheckedChange={(details) => setSafetyCheck(!!details.checked)}
+            alignItems="flex-start"
+            gap={3}
+            maxW="560px"
+          >
+            <Checkbox.HiddenInput />
+            <Checkbox.Control
+              mt={0.5}
+              borderColor={ui.colors.borderStrong}
+              borderRadius="2px"
+              bg={ui.colors.inset}
+              _checked={{ bg: ui.colors.accent, borderColor: ui.colors.accent }}
+            />
+            <Checkbox.Label fontSize="xs" lineHeight="1.6" color={ui.colors.textMuted}>
+              Volume is low, direct monitoring is off, and the microphone is positioned
+              safely away from feedback.
+            </Checkbox.Label>
+          </Checkbox.Root>
         </Stack>
 
         <Button
@@ -65,7 +55,7 @@ export function MeasurementActions({ state }: MeasurementActionsProps) {
           fontSize="sm"
           onClick={() => handleStartSession().catch((e) => alert(e.message))}
         >
-          {isTestMode ? 'Run test session' : 'Start live session'}
+          Start live session
         </Button>
       </Flex>
 
