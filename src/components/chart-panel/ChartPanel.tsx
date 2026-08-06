@@ -7,6 +7,7 @@ import { ChartEqEditor } from "./chart-eq-editor";
 import { resolveChartFrequencyRange } from "./constants";
 import { ChartHeader } from "./ChartHeader";
 import { FrequencyChart } from "./frequency-chart";
+import { SavedMeasurementsList } from "./SavedMeasurementsList";
 import type { ChartPanelProps } from "./types";
 
 export function ChartPanel({ state }: ChartPanelProps) {
@@ -37,6 +38,7 @@ export function ChartPanel({ state }: ChartPanelProps) {
 	return (
 		<Card.Root w="full" {...panelStyles.root} id="frequency-chart-panel">
 			<Card.Header {...panelStyles.header}>
+				<SavedMeasurementsList state={state} />
 				<ChartHeader
 					chartSeries={chartSeries}
 					isChartSeriesVisible={isChartSeriesVisible}

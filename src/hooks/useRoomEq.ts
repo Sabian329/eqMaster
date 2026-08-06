@@ -22,16 +22,24 @@ import type {
 	MeasurementMeta,
 	MeasurementRun,
 	MeasurementSessionStep,
+	SavedMeasurement,
 	SelectedOutputDevice,
-	SetupMode,
 	Suggestion,
 } from "../types";
-import { buildPresetText } from "../utils/preset";
+import { buildDynamicPresetName, buildPresetText } from "../utils/preset";
 import { downloadText, safePresetFilename } from "../utils/download";
 import { formatFrequency, meterOptimalRangeLabel } from "../utils/format";
 import { averageCurves } from "../utils/averageCurves";
+import {
+	createSavedMeasurement,
+	loadSavedMeasurements,
+	prependSavedMeasurement,
+	removeSavedMeasurement,
+	writeSavedMeasurements,
+} from "../utils/savedMeasurements";
 import { PRO_MAX_AUTO_BANDS } from "../utils/autoEqBridge";
-import { getMockPresetLabel } from "../components/advanced-setup/constants";
+import { MOCK_PRESET_COUNT, getMockPresetLabel } from "../components/advanced-setup/constants";
+import { createMockMeasurementRun } from "../utils/mockMeasurement";
 import { runCorrectionPipeline } from "../utils/correctionPipeline";
 import type { EqAlgorithmVersion } from "../config/eqAlgorithms";
 import type { AutoEqProgress, AutoEqPrecision } from "../audio/auto-eq/types";
@@ -66,12 +74,6 @@ import {
 	SOS_OVERLAY_BANDS,
 	type EqShapePresetId,
 } from "../config/eqShapePresets";
-import { MOCK_PRESET_COUNT } from "../components/advanced-setup/constants";
-import {
-	runMockMeasurement,
-	runMockVerification,
-	createMockMeasurementRun,
-} from "../utils/mockMeasurement";
 import {
 	MEASUREMENT_PRESETS,
 	SWEEP_LEVEL_DB,
@@ -217,13 +219,12 @@ export function useRoomEq() {
 		useState<MeasurementMeta | null>(null);
 	const [measurementRuns, setMeasurementRuns] = useState<MeasurementRun[]>([]);
 	const [averagedRun, setAveragedRun] = useState<MeasurementRun | null>(null);
-
-	const [setupMode, setSetupMode] = useState<SetupMode>("live");
-	const [mockLibraryGeneration, setMockLibraryGeneration] = useState(0);
-	const [mockPresets, setMockPresets] = useState<MockPreset[]>([]);
-	const [selectedMockPresetId, setSelectedMockPresetId] = useState(1);
-
-	const isTestMode = setupMode === "test";
+	const [savedMeasurements, setSavedMeasurements] = useState<
+		SavedMeasurement[]
+	>(() => loadSavedMeasurements());
+	const [activeSavedMeasurementId, setActiveSavedMeasurementId] = useState<
+		string | null
+	>(null);
 
 	const [sessionOpen, setSessionOpen] = useState(false);
 	const [sessionStep, setSessionStep] =
@@ -238,7 +239,9 @@ export function useRoomEq() {
 	const [sessionMeterDb, setSessionMeterDb] = useState(-Infinity);
 	const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
-	const [presetName, setPresetName] = useState("Room EQ");
+	const [presetName, setPresetName] = useState(() =>
+		buildDynamicPresetName("v1", 12),
+	);
 	const [presetPreamp, setPresetPreamp] = useState(0);
 	const [presetStatus, setPresetStatus] = useState("");
 	const [suggestionQOverrides, setSuggestionQOverrides] = useState<
@@ -376,9 +379,8 @@ export function useRoomEq() {
 		return "This browser does not support Web Audio output selection. The system default output will be used.";
 	}, [env]);
 
-	const measureEnabled = isTestMode
-		? !running && !meterActive && !sessionOpen
-		: env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
+	const measureEnabled =
+		env.ready && safetyCheck && !running && !meterActive && !sessionOpen;
 
 	const targetCurve = useMemo(() => {
 		if (!curve.length) return [];
@@ -838,7 +840,8 @@ export function useRoomEq() {
 		!verificationRunning &&
 		!sessionOpen &&
 		!meterActive &&
-		(isTestMode || (env.ready && safetyCheck));
+		env.ready &&
+		safetyCheck;
 
 	const clearVerification = useCallback(() => {
 		setVerificationCurve(null);
@@ -925,6 +928,19 @@ export function useRoomEq() {
 		}));
 	}, []);
 
+	useEffect(() => {
+		const dateSource = measurementMeta?.date ?? new Date().toISOString();
+		const smoothSource = measurementMeta?.smoothing ?? smoothing;
+		setPresetName(
+			buildDynamicPresetName(eqAlgorithmVersion, smoothSource, dateSource),
+		);
+	}, [
+		eqAlgorithmVersion,
+		smoothing,
+		measurementMeta?.date,
+		measurementMeta?.smoothing,
+	]);
+
 	const presetText = useMemo(
 		() => buildPresetText(presetName, presetPreamp, suggestions),
 		[presetName, presetPreamp, suggestions],
@@ -1005,6 +1021,7 @@ export function useRoomEq() {
 			setRemovedSuggestionKeys({});
 			clearVerification();
 			setMeasurementMeta(baseMeta);
+			setActiveSavedMeasurementId(null);
 			setPresetStatus("");
 			setStatus(
 				baseMeta.recorderMode === "mock"
@@ -1018,6 +1035,146 @@ export function useRoomEq() {
 			);
 		},
 		[setStatus, clearVerification],
+	);
+
+	const persistSavedMeasurements = useCallback(
+		(updater: (prev: SavedMeasurement[]) => SavedMeasurement[]) => {
+			setSavedMeasurements((prev) => {
+				const next = updater(prev);
+				try {
+					writeSavedMeasurements(next);
+				} catch {
+					queueMicrotask(() => {
+						setStatus(
+							"Could not persist measurements to local storage.",
+							100,
+						);
+					});
+				}
+				return next;
+			});
+		},
+		[setStatus],
+	);
+
+	const saveMeasurementFromRuns = useCallback(
+		(
+			runs: MeasurementRun[],
+			customName?: string,
+		): SavedMeasurement | null => {
+			if (!runs.length) return null;
+
+			const averagedCurve = sanitizeCurve(
+				averageCurves(runs.map((run) => run.curve)),
+			);
+			const baseMeta = runs[runs.length - 1].meta;
+			const average: MeasurementRun | null =
+				runs.length > 1
+					? {
+							index: 0,
+							label: "Average",
+							curve: averagedCurve,
+							suggestions: [],
+							meta: {
+								...baseMeta,
+								date: new Date().toISOString(),
+							},
+						}
+					: null;
+
+			const saved = createSavedMeasurement({
+				meta: baseMeta,
+				curve: averagedCurve,
+				runs,
+				average,
+				name: customName,
+			});
+
+			persistSavedMeasurements((prev) =>
+				prependSavedMeasurement(prev, saved),
+			);
+			setActiveSavedMeasurementId(saved.id);
+			return saved;
+		},
+		[persistSavedMeasurements],
+	);
+
+	const saveCurrentMeasurement = useCallback(() => {
+		if (!measurementRuns.length || !curve.length || !measurementMeta) {
+			setStatus("Nothing to save — run a measurement first.", 100);
+			return;
+		}
+
+		const saved = createSavedMeasurement({
+			meta: measurementMeta,
+			curve,
+			runs: measurementRuns,
+			average: averagedRun,
+		});
+
+		persistSavedMeasurements((prev) => prependSavedMeasurement(prev, saved));
+		setActiveSavedMeasurementId(saved.id);
+		setStatus(`Saved: ${saved.name}`, 100);
+	}, [
+		averagedRun,
+		curve,
+		measurementMeta,
+		measurementRuns,
+		persistSavedMeasurements,
+		setStatus,
+	]);
+
+	const loadSavedMeasurement = useCallback(
+		(id: string) => {
+			const saved = savedMeasurements.find((item) => item.id === id);
+			if (!saved || !saved.runs.length) return;
+
+			const runs = saved.runs;
+			const averagedCurve = sanitizeCurve(
+				saved.curve.length
+					? saved.curve
+					: averageCurves(runs.map((run) => run.curve)),
+			);
+			const baseMeta = saved.meta ?? runs[runs.length - 1].meta;
+
+			setMeasurementRuns(runs);
+			setAveragedRun(
+				saved.average ??
+					(runs.length > 1
+						? {
+								index: 0,
+								label: "Average",
+								curve: averagedCurve,
+								suggestions: [],
+								meta: baseMeta,
+							}
+						: null),
+			);
+			setCurve(averagedCurve);
+			setCustomSuggestions([]);
+			setRemovedSuggestionKeys({});
+			clearVerification();
+			setMeasurementMeta(baseMeta);
+			setActiveSavedMeasurementId(saved.id);
+			setPresetStatus("");
+			setStatus(`Loaded: ${saved.name}`, 100);
+		},
+		[clearVerification, savedMeasurements, setStatus],
+	);
+
+	const deleteSavedMeasurement = useCallback(
+		(id: string) => {
+			persistSavedMeasurements((prev) => removeSavedMeasurement(prev, id));
+			if (activeSavedMeasurementId === id) {
+				setActiveSavedMeasurementId(null);
+			}
+			setStatus("Measurement removed from library.", 100);
+		},
+		[
+			activeSavedMeasurementId,
+			persistSavedMeasurements,
+			setStatus,
+		],
 	);
 
 	const buildMockPreset = useCallback(
@@ -1069,52 +1226,34 @@ export function useRoomEq() {
 		],
 	);
 
-	const regenerateMockLibrary = useCallback(
-		(selectId = selectedMockPresetId) => {
-			const nextGeneration = mockLibraryGeneration + 1;
-			setMockLibraryGeneration(nextGeneration);
-
-			const presets = Array.from({ length: MOCK_PRESET_COUNT }, (_, index) =>
-				buildMockPreset(index + 1, nextGeneration * 1000),
+	const generateMockMeasurement = useCallback(
+		(options: { name: string; presetId: number }) => {
+			const presetId = Math.min(
+				Math.max(1, Math.round(options.presetId)),
+				MOCK_PRESET_COUNT,
 			);
-			setMockPresets(presets);
+			const seedSalt = Date.now() % 100_000;
+			const preset = buildMockPreset(presetId, seedSalt);
+			const customName = options.name.replace(/[\r\n]+/g, " ").trim();
 
-			const safeId = Math.min(Math.max(1, selectId), MOCK_PRESET_COUNT);
-			setSelectedMockPresetId(safeId);
-			applySessionResults(presets[safeId - 1].runs);
+			applySessionResults(preset.runs);
+			const saved = saveMeasurementFromRuns(
+				preset.runs,
+				customName || undefined,
+			);
+
+			if (saved) {
+				setStatus(`Saved mock: ${saved.name}`, 100);
+			}
+			return saved;
 		},
 		[
 			applySessionResults,
 			buildMockPreset,
-			mockLibraryGeneration,
-			selectedMockPresetId,
+			saveMeasurementFromRuns,
+			setStatus,
 		],
 	);
-
-	const selectMockPreset = useCallback(
-		(presetId: number) => {
-			const preset = mockPresets.find((item) => item.id === presetId);
-			if (!preset) return;
-			setSelectedMockPresetId(presetId);
-			applySessionResults(preset.runs);
-		},
-		[applySessionResults, mockPresets],
-	);
-
-	const loadMockDemoResults = regenerateMockLibrary;
-
-	useEffect(() => {
-		if (setupMode !== "test" || sessionOpen || running) return;
-		if (mockPresets.length >= MOCK_PRESET_COUNT) return;
-		regenerateMockLibrary(selectedMockPresetId);
-	}, [
-		setupMode,
-		sessionOpen,
-		running,
-		mockPresets.length,
-		regenerateMockLibrary,
-		selectedMockPresetId,
-	]);
 
 	const stopSessionMeter = useCallback(async () => {
 		await sessionMeterRef.current?.stop();
@@ -1221,17 +1360,12 @@ export function useRoomEq() {
 		clearVerification();
 
 		setSessionOpen(true);
-		setSessionStep(isTestMode ? "ready" : "mic-test");
+		setSessionStep("mic-test");
 		setSessionTargetCount(measurementCount);
 		setSessionRuns([]);
 		setSessionMeterDb(-Infinity);
 		setSessionWarning(null);
-		setStatus(
-			isTestMode
-				? "Test session started — mock data only"
-				: "Measurement session started",
-			0,
-		);
+		setStatus("Measurement session started", 0);
 	};
 
 	const handleSessionSkipMicTest = () => {
@@ -1305,28 +1439,14 @@ export function useRoomEq() {
 		};
 
 		try {
-			const { inputLabel, outputLabel } = getDeviceLabels();
-			const result = isTestMode
-				? await runMockMeasurement(
-						{
-							fMin: fStart,
-							fMax: fEnd,
-							smoothing,
-							durationSeconds: duration,
-							levelDb: SWEEP_LEVEL_DB,
-							channel,
-							runIndex,
-							inputLabel,
-							outputLabel,
-						},
-						setStatus,
-						onAudioFrame,
-						abortSignal,
-					)
-				: await executeMeasurement(setStatus, onAudioFrame, abortSignal);
+			const result = await executeMeasurement(
+				setStatus,
+				onAudioFrame,
+				abortSignal,
+			);
 			const run: MeasurementRun = {
 				index: runIndex,
-				label: isTestMode ? `Mock ${runIndex}` : `Run ${runIndex}`,
+				label: `Run ${runIndex}`,
 				curve: result.curve,
 				suggestions: result.suggestions,
 				meta: result.measurementMeta,
@@ -1344,12 +1464,8 @@ export function useRoomEq() {
 			setSessionStep("run-complete");
 			setStatus(
 				replacingRunIndex
-					? isTestMode
-						? `Mock measurement ${runIndex} replaced`
-						: `Measurement ${runIndex} replaced`
-					: isTestMode
-						? `Mock measurement ${runIndex} complete`
-						: `Measurement ${runIndex} complete`,
+					? `Measurement ${runIndex} replaced`
+					: `Measurement ${runIndex} complete`,
 				100,
 			);
 		} catch (error) {
@@ -1385,14 +1501,21 @@ export function useRoomEq() {
 		setStatus(`Ready for measurement ${sessionRuns.length + 1}`, 0);
 	};
 
-	const handleSessionFinish = async () => {
+	const handleSessionFinish = async (customName?: string) => {
 		if (!sessionRuns.length) return;
 		await stopSessionMeter();
 		applySessionResults(sessionRuns);
+		const saved = saveMeasurementFromRuns(
+			sessionRuns,
+			customName?.trim() || undefined,
+		);
 		setSessionOpen(false);
 		setSessionStep("mic-test");
 		setSessionRuns([]);
 		setSessionWarning(null);
+		if (saved) {
+			setStatus(`Saved: ${saved.name}`, 100);
+		}
 	};
 
 	const handleSessionCancel = async () => {
@@ -1431,45 +1554,23 @@ export function useRoomEq() {
 			const { inputLabel, outputLabel } = getDeviceLabels();
 			const eqApply = eqApplyProfile;
 
-			if (isTestMode) {
-				const result = await runMockVerification(
-					{
-						fMin: fStart,
-						fMax: fEnd,
-						smoothing,
-						durationSeconds: duration,
-						levelDb: SWEEP_LEVEL_DB,
-						channel,
-						runIndex: 1,
-						inputLabel,
-						outputLabel,
-						baselineCurve: curve,
-						suggestions,
-						preampDb: presetPreamp,
-					},
-					setStatus,
-				);
-				setVerificationCurve(result.curve);
-				setVerificationMeta(result.measurementMeta);
-			} else {
-				const result = await runMeasurement({
-					inputDeviceId,
-					outputDeviceId,
-					channel,
-					fMin: fStart,
-					fMax: fEnd,
-					durationSeconds: duration,
-					smoothing,
-					levelDb: SWEEP_LEVEL_DB,
-					calibration,
-					inputLabel,
-					outputLabel,
-					onStatus: setStatus,
-					eqApply,
-				});
-				setVerificationCurve(result.curve);
-				setVerificationMeta(result.measurementMeta);
-			}
+			const result = await runMeasurement({
+				inputDeviceId,
+				outputDeviceId,
+				channel,
+				fMin: fStart,
+				fMax: fEnd,
+				durationSeconds: duration,
+				smoothing,
+				levelDb: SWEEP_LEVEL_DB,
+				calibration,
+				inputLabel,
+				outputLabel,
+				onStatus: setStatus,
+				eqApply,
+			});
+			setVerificationCurve(result.curve);
+			setVerificationMeta(result.measurementMeta);
 
 			setStatus(
 				"Verification complete — compare green Verified vs orange predicted",
@@ -1488,14 +1589,11 @@ export function useRoomEq() {
 		verificationRunning,
 		getDeviceLabels,
 		eqApplyProfile,
-		isTestMode,
 		fStart,
 		fEnd,
 		smoothing,
 		duration,
 		channel,
-		suggestions,
-		presetPreamp,
 		inputDeviceId,
 		outputDeviceId,
 		calibration,
@@ -1620,14 +1718,7 @@ export function useRoomEq() {
 		meterActive,
 		meterDb,
 		measureEnabled,
-		setupMode,
-		setSetupMode,
-		isTestMode,
-		mockPresets,
-		selectedMockPresetId,
-		selectMockPreset,
-		regenerateMockLibrary,
-		loadMockDemoResults,
+		generateMockMeasurement,
 		isMockMeasurement: measurementMeta?.recorderMode === "mock",
 		curve,
 		suggestions,
@@ -1660,6 +1751,11 @@ export function useRoomEq() {
 		measurementMeta,
 		measurementRuns,
 		averagedRun,
+		savedMeasurements,
+		activeSavedMeasurementId,
+		saveCurrentMeasurement,
+		loadSavedMeasurement,
+		deleteSavedMeasurement,
 		chartSeries,
 		visibleChartSeries,
 		isChartSeriesVisible,

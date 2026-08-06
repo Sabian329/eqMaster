@@ -14,15 +14,9 @@ import { CHANNEL_OPTIONS } from "../constants";
 
 interface DeviceSectionProps {
 	state: RoomEqState;
-	isTestMode: boolean;
-	hardwareDisabled: boolean;
 }
 
-export function DeviceSection({
-	state,
-	isTestMode,
-	hardwareDisabled,
-}: DeviceSectionProps) {
+export function DeviceSection({ state }: DeviceSectionProps) {
 	const {
 		env,
 		sinkHelp,
@@ -48,7 +42,6 @@ export function DeviceSection({
 				<DeviceActionButtons
 					env={env}
 					sinkHelp={sinkHelp}
-					disabled={hardwareDisabled}
 					onRequestPermission={handleRequestPermission}
 					onChooseOutput={handleChooseOutput}
 					onRefreshDevices={handleRefreshDevices}
@@ -58,7 +51,7 @@ export function DeviceSection({
 			<SimpleGrid {...setupSectionStyles.fieldGrid}>
 				<Field.Root>
 					<FormLabel>Microphone input</FormLabel>
-					<NativeSelect.Root size="md" disabled={hardwareDisabled}>
+					<NativeSelect.Root size="md">
 						<NativeSelect.Field
 							{...fieldStyles.control}
 							value={inputDeviceId}
@@ -73,19 +66,12 @@ export function DeviceSection({
 							))}
 						</NativeSelect.Field>
 					</NativeSelect.Root>
-					{isTestMode ? (
-						<FormHelper>Ignored in test mode — mock mic is used.</FormHelper>
-					) : (
-						<FormHelper>Measurement microphone or interface input.</FormHelper>
-					)}
+					<FormHelper>Measurement microphone or interface input.</FormHelper>
 				</Field.Root>
 
 				<Field.Root>
 					<FormLabel>Audio output</FormLabel>
-					<NativeSelect.Root
-						size="md"
-						disabled={!env.supportsSink || hardwareDisabled}
-					>
+					<NativeSelect.Root size="md" disabled={!env.supportsSink}>
 						<NativeSelect.Field
 							{...fieldStyles.control}
 							value={outputDeviceId}
@@ -100,16 +86,12 @@ export function DeviceSection({
 							))}
 						</NativeSelect.Field>
 					</NativeSelect.Root>
-					<FormHelper>
-						{isTestMode
-							? "Ignored in test mode — no audio is played."
-							: sinkHelp}
-					</FormHelper>
+					<FormHelper>{sinkHelp}</FormHelper>
 				</Field.Root>
 
 				<Field.Root gridColumn={{ md: "1 / -1" }}>
 					<FormLabel>Measured channel</FormLabel>
-					<NativeSelect.Root size="md" disabled={hardwareDisabled}>
+					<NativeSelect.Root size="md">
 						<NativeSelect.Field
 							{...fieldStyles.control}
 							maxW={{ md: "280px" }}

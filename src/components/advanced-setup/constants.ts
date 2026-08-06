@@ -20,10 +20,10 @@ export const MEASUREMENT_COUNT_OPTIONS: { value: MeasurementCount; label: string
   { value: 3, label: '3 measurements (averaged)' },
 ];
 
-/** Number of pre-generated mock presets available in Test tab. */
+/** Number of synthetic complexity profiles for Generate mock. */
 export const MOCK_PRESET_COUNT = 9;
 
-/** Short labels for mock library buttons (presets 5–9 are stress tests). */
+/** Short labels for mock complexity buttons (presets 5–9 are stress tests). */
 export const MOCK_PRESET_LABELS: Record<number, string> = {
   5: 'Mock 5 · corner',
   6: 'Mock 6 · dense',

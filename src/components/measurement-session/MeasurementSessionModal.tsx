@@ -1,6 +1,13 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Dialog, Stack } from '@chakra-ui/react';
+import {
+  joinMeasurementNameParts,
+  resolveMeasurementNamePrefix,
+  type MeasurementNamePrefixId,
+} from '../../config/measurementNamePrefixes';
 import { modalStyles } from '../../theme';
-import { MeasurementProgress } from '../shared';
+import { buildSavedMeasurementName } from '../../utils/savedMeasurements';
+import { MeasurementNameFields, MeasurementProgress } from '../shared';
 import { SessionWarningBanner } from './SessionWarningBanner';
 import { CompletedRunsList } from './CompletedRunsList';
 import { SessionFooter } from './SessionFooter';
@@ -22,7 +29,8 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
     running,
     statusText,
     progress,
-    isTestMode,
+    fStart,
+    fEnd,
     getSessionAudioFrame,
     handleSessionSkipMicTest,
     handleSessionStartMeter,
@@ -40,8 +48,42 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
   const canFinish = sessionRuns.length > 0;
   const allRunsDone = sessionRuns.length >= sessionTargetCount;
   const lastCompletedRunNumber = sessionRuns.length;
-
   const showProgress = sessionStep === 'measuring' || sessionStep === 'run-complete';
+  const showSaveName =
+    canFinish &&
+    (sessionStep === 'ready' || sessionStep === 'run-complete');
+
+  const [prefixId, setPrefixId] = useState<MeasurementNamePrefixId>('room');
+  const [customPrefix, setCustomPrefix] = useState('');
+  const [saveName, setSaveName] = useState('');
+  const [nameTouched, setNameTouched] = useState(false);
+
+  const prefixLabel = useMemo(
+    () => resolveMeasurementNamePrefix(prefixId, customPrefix),
+    [prefixId, customPrefix],
+  );
+
+  const autoSaveName = useMemo(() => {
+    const lastMeta = sessionRuns[sessionRuns.length - 1]?.meta;
+    const frequencyPart = buildSavedMeasurementName(
+      lastMeta?.fMin ?? fStart,
+      lastMeta?.fMax ?? fEnd,
+      lastMeta?.date ?? new Date(),
+    );
+    return joinMeasurementNameParts(prefixLabel, frequencyPart);
+  }, [sessionRuns, fStart, fEnd, prefixLabel]);
+
+  useEffect(() => {
+    if (!sessionOpen) return;
+    setPrefixId('room');
+    setCustomPrefix('');
+    setNameTouched(false);
+  }, [sessionOpen]);
+
+  useEffect(() => {
+    if (!sessionOpen || nameTouched) return;
+    setSaveName(autoSaveName);
+  }, [sessionOpen, nameTouched, autoSaveName]);
 
   return (
     <Dialog.Root
@@ -67,10 +109,12 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
                 />
               )}
 
-              <MeasurementAuroraPanel
-                active={sessionStep === 'measuring'}
-                getAudioFrame={getSessionAudioFrame}
-              />
+              {sessionStep === 'measuring' ? (
+                <MeasurementAuroraPanel
+                  active
+                  getAudioFrame={getSessionAudioFrame}
+                />
+              ) : null}
 
               <Box {...modalStyles.bodyInner}>
                 <Stack gap={4}>
@@ -85,7 +129,6 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
 
                   <SessionStepContent
                     sessionStep={sessionStep}
-                    isTestMode={isTestMode}
                     allRunsDone={allRunsDone}
                   />
 
@@ -101,6 +144,27 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
                     running={running}
                     onRedoRun={handleSessionRedoMeasurement}
                   />
+
+                  {showSaveName ? (
+                    <MeasurementNameFields
+                      prefixId={prefixId}
+                      onPrefixIdChange={(id) => {
+                        setNameTouched(false);
+                        setPrefixId(id);
+                      }}
+                      customPrefix={customPrefix}
+                      onCustomPrefixChange={(value) => {
+                        setNameTouched(false);
+                        setCustomPrefix(value);
+                      }}
+                      name={saveName}
+                      onNameChange={(value) => {
+                        setNameTouched(true);
+                        setSaveName(value);
+                      }}
+                      helperText="Used when you finish the session and save to the measurement library."
+                    />
+                  ) : null}
                 </Stack>
               </Box>
             </Stack>
@@ -114,13 +178,12 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
               allRunsDone={allRunsDone}
               nextRunNumber={nextRunNumber}
               lastCompletedRunNumber={lastCompletedRunNumber}
-              isTestMode={isTestMode}
               onSkipMicTest={handleSessionSkipMicTest}
               onRunMeasurement={() => void handleSessionRunMeasurement()}
               onStopMeasurement={handleSessionStopMeasurement}
               onRedoMeasurement={handleSessionRedoMeasurement}
               onContinue={handleSessionContinue}
-              onFinish={handleSessionFinish}
+              onFinish={() => void handleSessionFinish(saveName)}
               onCancel={handleSessionCancel}
             />
           </Dialog.Footer>

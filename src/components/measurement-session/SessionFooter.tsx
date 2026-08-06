@@ -10,13 +10,12 @@ interface SessionFooterProps {
   allRunsDone: boolean;
   nextRunNumber: number;
   lastCompletedRunNumber: number;
-  isTestMode: boolean;
   onSkipMicTest: RoomEqState['handleSessionSkipMicTest'];
   onRunMeasurement: () => void;
   onStopMeasurement: RoomEqState['handleSessionStopMeasurement'];
   onRedoMeasurement: RoomEqState['handleSessionRedoMeasurement'];
   onContinue: RoomEqState['handleSessionContinue'];
-  onFinish: RoomEqState['handleSessionFinish'];
+  onFinish: (customName?: string) => void | Promise<void>;
   onCancel: RoomEqState['handleSessionCancel'];
 }
 
@@ -27,7 +26,6 @@ export function SessionFooter({
   allRunsDone,
   nextRunNumber,
   lastCompletedRunNumber,
-  isTestMode,
   onSkipMicTest,
   onRunMeasurement,
   onStopMeasurement,
@@ -65,9 +63,7 @@ export function SessionFooter({
             disabled={running}
             onClick={() => void onRunMeasurement()}
           >
-            {isTestMode
-              ? `Start mock ${nextRunNumber}`
-              : `Start measurement ${nextRunNumber}`}
+            {`Start measurement ${nextRunNumber}`}
           </Button>
         </>
       )}
@@ -87,9 +83,7 @@ export function SessionFooter({
             {...modalStyles.actionButton}
             onClick={() => onRedoMeasurement(lastCompletedRunNumber)}
           >
-            {isTestMode
-              ? `Redo mock ${lastCompletedRunNumber}`
-              : `Redo measurement ${lastCompletedRunNumber}`}
+            {`Redo measurement ${lastCompletedRunNumber}`}
           </Button>
           {!allRunsDone && (
             <Button

@@ -2,11 +2,10 @@ import { useEffect, useRef } from 'react';
 import { Button, Card, Flex, Heading, HStack, Stack, Text } from '@chakra-ui/react';
 import { buttonStyles, panelStyles, ui } from '../../theme';
 import { PresetExportCard } from './PresetExportCard';
-import { ResultsEmptyState } from './ResultsEmptyState';
 import type { ResultsPanelProps } from './types';
 
 export function ResultsPanel({ state }: ResultsPanelProps) {
-  const { curve, exportCsv, exportJson, isTestMode } = state;
+  const { curve, exportCsv, exportJson } = state;
 
   const sectionRef = useRef<HTMLDivElement>(null);
   const prevCurveLen = useRef(0);
@@ -20,31 +19,45 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
     prevCurveLen.current = curve.length;
   }, [curve.length]);
 
-  if (!curve.length) {
-    return (
-      <div ref={sectionRef}>
-        <ResultsEmptyState isTestMode={isTestMode} />
-      </div>
-    );
-  }
+  const hasCurve = curve.length > 0;
 
   return (
     <Card.Root ref={sectionRef} w="full" {...panelStyles.root}>
       <Card.Header {...panelStyles.header}>
         <Flex justify="space-between" align="center" gap={4} flexWrap="wrap">
           <Stack gap={1}>
-            <Heading size="sm" fontWeight="700" color={ui.colors.text} letterSpacing="0.04em" textTransform="uppercase">
+            <Heading
+              size="sm"
+              fontWeight="700"
+              color={ui.colors.text}
+              letterSpacing="0.04em"
+              textTransform="uppercase"
+            >
               Export & preset
             </Heading>
             <Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.6">
-              EQ editing is directly under the frequency chart above.
+              {hasCurve
+                ? 'EQ editing is directly under the frequency chart above.'
+                : 'Run a measurement or load a saved one to export a preset.'}
             </Text>
           </Stack>
-          <HStack gap={2}>
-            <Button size="sm" borderRadius="2px" {...buttonStyles.secondary} onClick={exportCsv}>
+          <HStack gap={2} flexWrap="wrap">
+            <Button
+              size="sm"
+              borderRadius="2px"
+              {...buttonStyles.secondary}
+              disabled={!hasCurve}
+              onClick={exportCsv}
+            >
               Export CSV
             </Button>
-            <Button size="sm" borderRadius="2px" {...buttonStyles.secondary} onClick={exportJson}>
+            <Button
+              size="sm"
+              borderRadius="2px"
+              {...buttonStyles.secondary}
+              disabled={!hasCurve}
+              onClick={exportJson}
+            >
               Export JSON
             </Button>
           </HStack>
@@ -52,13 +65,21 @@ export function ResultsPanel({ state }: ResultsPanelProps) {
       </Card.Header>
 
       <Card.Body {...panelStyles.body}>
-        <PresetExportCard state={state} />
-
-        <Text fontSize="xs" color="gray.500" lineHeight="1.65" mt={4}>
-          Suggestions are a starting point, not automatic calibration. Adjust gain and Q under
-          the chart — orange After EQ updates live; use Verify correction for a real re-measurement
-          with EQ on the sweep.
-        </Text>
+        {hasCurve ? (
+          <>
+            <PresetExportCard state={state} />
+            <Text fontSize="xs" color="gray.500" lineHeight="1.65" mt={4}>
+              Suggestions are a starting point, not automatic calibration. Adjust
+              gain and Q under the chart — orange After EQ updates live; use
+              Verify correction for a real re-measurement with EQ on the sweep.
+            </Text>
+          </>
+        ) : (
+          <Text fontSize="sm" color="gray.500" lineHeight="1.65">
+            No measurement loaded yet. Generate a mock above Frequency response,
+            or run a live measurement session.
+          </Text>
+        )}
       </Card.Body>
     </Card.Root>
   );

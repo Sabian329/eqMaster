@@ -1,6 +1,22 @@
+import type { EqAlgorithmVersion } from '../config/eqAlgorithms';
 import type { Suggestion } from '../types';
 import { clampSuggestionQ } from './suggestionQ';
 import { compactNumber, qToBandwidthOctaves } from './format';
+
+/** e.g. EQV3_1/12_2026-08-06 */
+export function buildDynamicPresetName(
+  algorithmVersion: EqAlgorithmVersion,
+  smoothing: number,
+  date: Date | string = new Date(),
+): string {
+  const when = typeof date === 'string' ? new Date(date) : date;
+  const safeWhen = Number.isNaN(when.getTime()) ? new Date() : when;
+  const y = safeWhen.getFullYear();
+  const m = String(safeWhen.getMonth() + 1).padStart(2, '0');
+  const day = String(safeWhen.getDate()).padStart(2, '0');
+  const smoothLabel = smoothing > 0 ? `1/${smoothing}` : 'RAW';
+  return `EQ${algorithmVersion.toUpperCase()}_${smoothLabel}_${y}-${m}-${day}`;
+}
 
 export function buildPresetText(
   name: string,

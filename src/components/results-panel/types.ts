@@ -7,7 +7,3 @@ export interface ResultsPanelProps {
 export interface PresetExportCardProps {
   state: RoomEqState;
 }
-
-export interface ResultsEmptyStateProps {
-  isTestMode: boolean;
-}

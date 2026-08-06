@@ -1,7 +1,5 @@
 export type MeasurementCount = 1 | 2 | 3;
 
-export type SetupMode = 'live' | 'test';
-
 export type MeasurementSessionStep =
   | 'mic-test'
   | 'ready'
@@ -14,6 +12,18 @@ export interface MeasurementRun {
   curve: CurvePoint[];
   suggestions: Suggestion[];
   meta: MeasurementMeta;
+}
+
+/** Persisted measurement library entry (web + Electron via localStorage). */
+export interface SavedMeasurement {
+  id: string;
+  /** e.g. "40 Hz – 20 kHz · 2026-08-06 15:38" */
+  name: string;
+  savedAt: string;
+  meta: MeasurementMeta;
+  curve: CurvePoint[];
+  runs: MeasurementRun[];
+  average: MeasurementRun | null;
 }
 
 export interface ChartSeries {
