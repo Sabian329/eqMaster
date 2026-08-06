@@ -698,12 +698,15 @@ function buildMockCurve(options: MockMeasurementOptions): CurvePoint[] {
   }));
 
   // Keep Mock 5 intentionally jagged — minimal smoothing only.
+  // smoothing <= 0 → RAW (no fractional-octave smoothing).
   const smoothFraction =
-    resonantPreset === 5
-      ? Math.max(48, options.smoothing)
-      : resonantPreset
-        ? Math.max(12, options.smoothing)
-        : Math.max(6, options.smoothing);
+    options.smoothing <= 0
+      ? 0
+      : resonantPreset === 5
+        ? Math.max(48, options.smoothing)
+        : resonantPreset
+          ? Math.max(12, options.smoothing)
+          : Math.max(6, options.smoothing);
   const smoothed = smoothMockCurve(normalized, smoothFraction);
 
   return sanitizeCurve(smoothed);

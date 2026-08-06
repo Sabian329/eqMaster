@@ -191,7 +191,7 @@ export function useRoomEq() {
 	const [fStart, setFStart] = useState(40);
 	const [fEnd, setFEnd] = useState(20000);
 	const [duration, setDuration] = useState(10);
-	const [smoothing, setSmoothing] = useState(6);
+	const [smoothing, setSmoothing] = useState(12);
 	const [measurementCount, setMeasurementCount] = useState<MeasurementCount>(1);
 	const [safetyCheck, setSafetyCheck] = useState(false);
 	const [activeMeasurementPresetId, setActiveMeasurementPresetId] =
@@ -1542,10 +1542,21 @@ export function useRoomEq() {
 	const copyPreset = async () => {
 		const text = presetText;
 		try {
-			if (navigator.clipboard && window.isSecureContext) {
+			if (window.electronAPI?.copyText) {
+				await window.electronAPI.copyText(text);
+			} else if (navigator.clipboard?.writeText && window.isSecureContext) {
 				await navigator.clipboard.writeText(text);
 			} else {
-				throw new Error("Clipboard unavailable");
+				const area = document.createElement("textarea");
+				area.value = text;
+				area.setAttribute("readonly", "");
+				area.style.position = "fixed";
+				area.style.left = "-9999px";
+				document.body.appendChild(area);
+				area.select();
+				const ok = document.execCommand("copy");
+				document.body.removeChild(area);
+				if (!ok) throw new Error("Clipboard unavailable");
 			}
 			setPresetStatus("Preset copied to clipboard.");
 		} catch {
