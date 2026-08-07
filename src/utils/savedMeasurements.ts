@@ -1,6 +1,8 @@
 import type { MeasurementMeta, MeasurementRun, SavedMeasurement } from '../types';
+import { joinMeasurementNameParts } from '../config/measurementNamePrefixes';
 import { formatFrequency } from './format';
 
+/** Shared by web and Electron renderer (Chromium localStorage). */
 const STORAGE_KEY = 'eqmaster.savedMeasurements';
 const MAX_SAVED = 50;
 
@@ -21,6 +23,31 @@ export function buildSavedMeasurementName(
   const when = typeof date === 'string' ? new Date(date) : date;
   const safeWhen = Number.isNaN(when.getTime()) ? new Date() : when;
   return `${formatFrequency(fMin)} – ${formatFrequency(fMax)} · ${formatLocalDateTime(safeWhen)}`;
+}
+
+/** First ` · ` segment of a composed name, if it looks like a label. */
+export function extractMeasurementPrefix(name: string): string {
+  const trimmed = name.replace(/[\r\n]+/g, ' ').trim();
+  if (!trimmed) return '';
+  const [first = ''] = trimmed.split(' · ');
+  const candidate = first.trim();
+  if (!candidate || candidate.startsWith('#')) return '';
+  if (/^\d+(\.\d+)?\s*(Hz|kHz)$/i.test(candidate)) return '';
+  if (/^EQ[Vv]?\d/i.test(candidate)) return '';
+  return candidate;
+}
+
+export function nextMeasurementNumber(
+  existing: SavedMeasurement[],
+): number {
+  let max = 0;
+  for (const item of existing) {
+    const value = item.measurementNumber;
+    if (typeof value === 'number' && Number.isFinite(value) && value > max) {
+      max = value;
+    }
+  }
+  return max + 1;
 }
 
 function createId(): string {
@@ -50,7 +77,12 @@ export function loadSavedMeasurements(): SavedMeasurement[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isSavedMeasurement);
+    return parsed.filter(isSavedMeasurement).map((item, index, list) => ({
+      ...item,
+      prefix: item.prefix || extractMeasurementPrefix(item.name) || undefined,
+      measurementNumber:
+        item.measurementNumber ?? list.length - index,
+    }));
   } catch {
     return [];
   }
@@ -67,14 +99,45 @@ export function createSavedMeasurement(input: {
   average: MeasurementRun | null;
   savedAt?: string;
   name?: string;
+  prefix?: string;
+  measurementNumber: number;
 }): SavedMeasurement {
   const savedAt = input.savedAt ?? new Date().toISOString();
   const fMin = input.meta.fMin;
   const fMax = input.meta.fMax;
   const trimmedName = input.name?.replace(/[\r\n]+/g, ' ').trim();
+  const prefix =
+    input.prefix?.replace(/[\r\n]+/g, ' ').trim() ||
+    (trimmedName ? extractMeasurementPrefix(trimmedName) : '') ||
+    undefined;
+  const numberLabel = `#${input.measurementNumber}`;
+
+  let name = trimmedName;
+  if (name) {
+    const alreadyHasNumber = name.includes(numberLabel);
+    if (prefix && !name.startsWith(prefix)) {
+      name = joinMeasurementNameParts(prefix, numberLabel, name);
+    } else if (!alreadyHasNumber) {
+      if (prefix && name.startsWith(prefix)) {
+        const rest = name.slice(prefix.length).replace(/^\s*·\s*/, '');
+        name = joinMeasurementNameParts(prefix, numberLabel, rest);
+      } else {
+        name = joinMeasurementNameParts(numberLabel, name);
+      }
+    }
+  } else {
+    name = joinMeasurementNameParts(
+      prefix,
+      numberLabel,
+      buildSavedMeasurementName(fMin, fMax, savedAt),
+    );
+  }
+
   return {
     id: createId(),
-    name: trimmedName || buildSavedMeasurementName(fMin, fMax, savedAt),
+    name,
+    prefix,
+    measurementNumber: input.measurementNumber,
     savedAt,
     meta: input.meta,
     curve: input.curve,

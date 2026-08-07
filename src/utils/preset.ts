@@ -1,21 +1,48 @@
 import type { EqAlgorithmVersion } from '../config/eqAlgorithms';
 import type { Suggestion } from '../types';
+import { joinMeasurementNameParts } from '../config/measurementNamePrefixes';
 import { clampSuggestionQ } from './suggestionQ';
 import { compactNumber, qToBandwidthOctaves } from './format';
 
-/** e.g. EQV3_1/12_2026-08-06 */
+export interface DynamicPresetNameOptions {
+  algorithmVersion: EqAlgorithmVersion;
+  smoothing: number;
+  date?: Date | string;
+  prefix?: string | null;
+  measurementNumber?: number | null;
+}
+
+/** e.g. Studio · #3 · EQV3_1/12_2026-08-06 */
 export function buildDynamicPresetName(
-  algorithmVersion: EqAlgorithmVersion,
-  smoothing: number,
-  date: Date | string = new Date(),
+  algorithmVersionOrOptions: EqAlgorithmVersion | DynamicPresetNameOptions,
+  smoothingArg?: number,
+  dateArg: Date | string = new Date(),
 ): string {
-  const when = typeof date === 'string' ? new Date(date) : date;
+  const options: DynamicPresetNameOptions =
+    typeof algorithmVersionOrOptions === 'string'
+      ? {
+          algorithmVersion: algorithmVersionOrOptions,
+          smoothing: smoothingArg ?? 12,
+          date: dateArg,
+        }
+      : algorithmVersionOrOptions;
+
+  const when =
+    typeof options.date === 'string'
+      ? new Date(options.date)
+      : (options.date ?? new Date());
   const safeWhen = Number.isNaN(when.getTime()) ? new Date() : when;
   const y = safeWhen.getFullYear();
   const m = String(safeWhen.getMonth() + 1).padStart(2, '0');
   const day = String(safeWhen.getDate()).padStart(2, '0');
-  const smoothLabel = smoothing > 0 ? `1/${smoothing}` : 'RAW';
-  return `EQ${algorithmVersion.toUpperCase()}_${smoothLabel}_${y}-${m}-${day}`;
+  const smoothLabel = options.smoothing > 0 ? `1/${options.smoothing}` : 'RAW';
+  const eqPart = `EQ${options.algorithmVersion.toUpperCase()}_${smoothLabel}_${y}-${m}-${day}`;
+  const numberPart =
+    options.measurementNumber != null && options.measurementNumber > 0
+      ? `#${options.measurementNumber}`
+      : null;
+
+  return joinMeasurementNameParts(options.prefix, numberPart, eqPart);
 }
 
 export function buildPresetText(

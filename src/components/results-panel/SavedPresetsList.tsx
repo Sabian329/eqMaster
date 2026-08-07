@@ -1,34 +1,37 @@
 import { useState } from 'react';
 import { Badge, Button, Flex, HStack, Stack, Text } from '@chakra-ui/react';
 import type { RoomEqState } from '../../hooks/useRoomEq';
-import type { SavedMeasurement } from '../../types';
+import type { SavedPreset } from '../../types';
 import { badgeStyles, buttonStyles, ui } from '../../theme';
 import { ConfirmDialog } from '../shared';
-import { GenerateMockMeasurementDialog } from '../results-panel/GenerateMockMeasurementDialog';
+import { SavePresetDialog } from './SavePresetDialog';
 
-interface SavedMeasurementsListProps {
+interface SavedPresetsListProps {
   state: RoomEqState;
 }
 
-export function SavedMeasurementsList({ state }: SavedMeasurementsListProps) {
+export function SavedPresetsList({ state }: SavedPresetsListProps) {
   const {
-    savedMeasurements,
-    activeSavedMeasurementId,
-    loadSavedMeasurement,
-    deleteSavedMeasurement,
-    generateMockMeasurement,
+    savedPresets,
+    activeSavedPresetId,
+    savePreset,
+    loadSavedPreset,
+    deleteSavedPreset,
+    presetName,
+    suggestions,
+    curve,
   } = state;
-  const [mockDialogOpen, setMockDialogOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<SavedMeasurement | null>(
-    null,
-  );
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<SavedPreset | null>(null);
+
+  const canSave = curve.length > 0 && suggestions.length > 0;
 
   return (
     <>
       <Stack
         gap={2}
         pb={3}
-        mb={3}
+        mb={4}
         borderBottomWidth="1px"
         borderColor={ui.colors.border}
       >
@@ -41,7 +44,7 @@ export function SavedMeasurementsList({ state }: SavedMeasurementsListProps) {
             textTransform="uppercase"
             fontFamily={ui.fonts.mono}
           >
-            Saved measurements
+            Saved presets
           </Text>
           <Button
             size="xs"
@@ -50,16 +53,17 @@ export function SavedMeasurementsList({ state }: SavedMeasurementsListProps) {
             borderRadius="2px"
             {...buttonStyles.secondary}
             fontSize="2xs"
-            onClick={() => setMockDialogOpen(true)}
+            disabled={!canSave}
+            onClick={() => setSaveDialogOpen(true)}
           >
-            Generate mock
+            Save preset
           </Button>
         </Flex>
 
-        {savedMeasurements.length ? (
+        {savedPresets.length ? (
           <Stack gap={1.5} maxH="140px" overflowY="auto">
-            {savedMeasurements.map((item) => {
-              const isActive = item.id === activeSavedMeasurementId;
+            {savedPresets.map((item) => {
+              const isActive = item.id === activeSavedPresetId;
               return (
                 <Flex
                   key={item.id}
@@ -99,7 +103,7 @@ export function SavedMeasurementsList({ state }: SavedMeasurementsListProps) {
                       borderRadius="2px"
                       {...buttonStyles.secondary}
                       fontSize="2xs"
-                      onClick={() => loadSavedMeasurement(item.id)}
+                      onClick={() => loadSavedPreset(item.id)}
                       disabled={isActive}
                     >
                       Load
@@ -122,24 +126,25 @@ export function SavedMeasurementsList({ state }: SavedMeasurementsListProps) {
           </Stack>
         ) : (
           <Text fontSize="2xs" color={ui.colors.textDim} lineHeight="1.5">
-            Finish a session or generate a mock to keep measurements here
-            (persists after restart).
+            Save an EQ preset to keep filter settings here (persists after
+            restart).
           </Text>
         )}
       </Stack>
 
-      <GenerateMockMeasurementDialog
-        open={mockDialogOpen}
-        onClose={() => setMockDialogOpen(false)}
-        onGenerate={generateMockMeasurement}
+      <SavePresetDialog
+        open={saveDialogOpen}
+        initialName={presetName}
+        onClose={() => setSaveDialogOpen(false)}
+        onSave={savePreset}
       />
 
       <ConfirmDialog
         open={pendingDelete != null}
-        title="Delete measurement"
+        title="Delete preset"
         description={
           pendingDelete
-            ? `Remove this saved measurement from the library?\n\n${pendingDelete.name}`
+            ? `Remove this saved preset from the library?\n\n${pendingDelete.name}`
             : ''
         }
         confirmLabel="Delete"
@@ -148,7 +153,7 @@ export function SavedMeasurementsList({ state }: SavedMeasurementsListProps) {
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           if (pendingDelete) {
-            deleteSavedMeasurement(pendingDelete.id);
+            deleteSavedPreset(pendingDelete.id);
           }
           setPendingDelete(null);
         }}

@@ -23,6 +23,7 @@ import type {
 	MeasurementRun,
 	MeasurementSessionStep,
 	SavedMeasurement,
+	SavedPreset,
 	SelectedOutputDevice,
 	Suggestion,
 } from "../types";
@@ -32,11 +33,20 @@ import { formatFrequency, meterOptimalRangeLabel } from "../utils/format";
 import { averageCurves } from "../utils/averageCurves";
 import {
 	createSavedMeasurement,
+	extractMeasurementPrefix,
 	loadSavedMeasurements,
+	nextMeasurementNumber,
 	prependSavedMeasurement,
 	removeSavedMeasurement,
 	writeSavedMeasurements,
 } from "../utils/savedMeasurements";
+import {
+	createSavedPreset,
+	loadSavedPresets,
+	prependSavedPreset,
+	removeSavedPreset,
+	writeSavedPresets,
+} from "../utils/savedPresets";
 import { PRO_MAX_AUTO_BANDS } from "../utils/autoEqBridge";
 import { MOCK_PRESET_COUNT, getMockPresetLabel } from "../components/advanced-setup/constants";
 import { createMockMeasurementRun } from "../utils/mockMeasurement";
@@ -225,6 +235,12 @@ export function useRoomEq() {
 	const [activeSavedMeasurementId, setActiveSavedMeasurementId] = useState<
 		string | null
 	>(null);
+	const [savedPresets, setSavedPresets] = useState<SavedPreset[]>(() =>
+		loadSavedPresets(),
+	);
+	const [activeSavedPresetId, setActiveSavedPresetId] = useState<string | null>(
+		null,
+	);
 
 	const [sessionOpen, setSessionOpen] = useState(false);
 	const [sessionStep, setSessionStep] =
@@ -240,7 +256,7 @@ export function useRoomEq() {
 	const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
 	const [presetName, setPresetName] = useState(() =>
-		buildDynamicPresetName("v1", 12),
+		buildDynamicPresetName({ algorithmVersion: "v1", smoothing: 12 }),
 	);
 	const [presetPreamp, setPresetPreamp] = useState(0);
 	const [presetStatus, setPresetStatus] = useState("");
@@ -929,16 +945,36 @@ export function useRoomEq() {
 	}, []);
 
 	useEffect(() => {
+		if (activeSavedPresetId) return;
+
 		const dateSource = measurementMeta?.date ?? new Date().toISOString();
 		const smoothSource = measurementMeta?.smoothing ?? smoothing;
+		const active = savedMeasurements.find(
+			(item) => item.id === activeSavedMeasurementId,
+		);
+		const prefix =
+			active?.prefix ||
+			(active ? extractMeasurementPrefix(active.name) : "") ||
+			undefined;
+		const measurementNumber = active?.measurementNumber ?? null;
+
 		setPresetName(
-			buildDynamicPresetName(eqAlgorithmVersion, smoothSource, dateSource),
+			buildDynamicPresetName({
+				algorithmVersion: eqAlgorithmVersion,
+				smoothing: smoothSource,
+				date: dateSource,
+				prefix,
+				measurementNumber,
+			}),
 		);
 	}, [
 		eqAlgorithmVersion,
 		smoothing,
 		measurementMeta?.date,
 		measurementMeta?.smoothing,
+		activeSavedMeasurementId,
+		activeSavedPresetId,
+		savedMeasurements,
 	]);
 
 	const presetText = useMemo(
@@ -1022,6 +1058,7 @@ export function useRoomEq() {
 			clearVerification();
 			setMeasurementMeta(baseMeta);
 			setActiveSavedMeasurementId(null);
+			setActiveSavedPresetId(null);
 			setPresetStatus("");
 			setStatus(
 				baseMeta.recorderMode === "mock"
@@ -1060,7 +1097,7 @@ export function useRoomEq() {
 	const saveMeasurementFromRuns = useCallback(
 		(
 			runs: MeasurementRun[],
-			customName?: string,
+			options?: { name?: string; prefix?: string },
 		): SavedMeasurement | null => {
 			if (!runs.length) return null;
 
@@ -1082,19 +1119,25 @@ export function useRoomEq() {
 						}
 					: null;
 
-			const saved = createSavedMeasurement({
-				meta: baseMeta,
-				curve: averagedCurve,
-				runs,
-				average,
-				name: customName,
+			const savedHolder: { current: SavedMeasurement | null } = {
+				current: null,
+			};
+			persistSavedMeasurements((prev) => {
+				savedHolder.current = createSavedMeasurement({
+					meta: baseMeta,
+					curve: averagedCurve,
+					runs,
+					average,
+					name: options?.name,
+					prefix: options?.prefix,
+					measurementNumber: nextMeasurementNumber(prev),
+				});
+				return prependSavedMeasurement(prev, savedHolder.current);
 			});
-
-			persistSavedMeasurements((prev) =>
-				prependSavedMeasurement(prev, saved),
-			);
-			setActiveSavedMeasurementId(saved.id);
-			return saved;
+			if (savedHolder.current) {
+				setActiveSavedMeasurementId(savedHolder.current.id);
+			}
+			return savedHolder.current;
 		},
 		[persistSavedMeasurements],
 	);
@@ -1105,16 +1148,23 @@ export function useRoomEq() {
 			return;
 		}
 
-		const saved = createSavedMeasurement({
-			meta: measurementMeta,
-			curve,
-			runs: measurementRuns,
-			average: averagedRun,
+		const savedHolder: { current: SavedMeasurement | null } = {
+			current: null,
+		};
+		persistSavedMeasurements((prev) => {
+			savedHolder.current = createSavedMeasurement({
+				meta: measurementMeta,
+				curve,
+				runs: measurementRuns,
+				average: averagedRun,
+				measurementNumber: nextMeasurementNumber(prev),
+			});
+			return prependSavedMeasurement(prev, savedHolder.current);
 		});
-
-		persistSavedMeasurements((prev) => prependSavedMeasurement(prev, saved));
-		setActiveSavedMeasurementId(saved.id);
-		setStatus(`Saved: ${saved.name}`, 100);
+		if (savedHolder.current) {
+			setActiveSavedMeasurementId(savedHolder.current.id);
+			setStatus(`Saved: ${savedHolder.current.name}`, 100);
+		}
 	}, [
 		averagedRun,
 		curve,
@@ -1177,6 +1227,95 @@ export function useRoomEq() {
 		],
 	);
 
+	const persistSavedPresets = useCallback(
+		(updater: (prev: SavedPreset[]) => SavedPreset[]) => {
+			setSavedPresets((prev) => {
+				const next = updater(prev);
+				try {
+					writeSavedPresets(next);
+				} catch {
+					queueMicrotask(() => {
+						setStatus("Could not persist presets to local storage.", 100);
+					});
+				}
+				return next;
+			});
+		},
+		[setStatus],
+	);
+
+	const savePreset = useCallback(
+		(name: string) => {
+			if (!curve.length) {
+				setStatus("Nothing to save — run a measurement first.", 100);
+				return;
+			}
+
+			const saved = createSavedPreset({
+				name,
+				preamp: presetPreamp,
+				suggestions,
+				eqAlgorithmVersion,
+			});
+
+			persistSavedPresets((prev) => prependSavedPreset(prev, saved));
+			setActiveSavedPresetId(saved.id);
+			setPresetName(saved.name);
+			setPresetStatus(`Preset saved: ${saved.name}`);
+			setStatus(`Saved preset: ${saved.name}`, 100);
+		},
+		[
+			curve.length,
+			eqAlgorithmVersion,
+			persistSavedPresets,
+			presetPreamp,
+			setStatus,
+			suggestions,
+		],
+	);
+
+	const loadSavedPreset = useCallback(
+		(id: string) => {
+			const saved = savedPresets.find((item) => item.id === id);
+			if (!saved) return;
+
+			const asCustom: Suggestion[] = saved.suggestions.map((item, index) => ({
+				...item,
+				source: "custom",
+				customId: item.customId ?? `preset-${saved.id}-${index}`,
+			}));
+
+			const removed: Record<string, true> = {};
+			for (const item of computedSuggestions) {
+				removed[suggestionKey(item)] = true;
+			}
+
+			setPresetName(saved.name);
+			setPresetPreamp(saved.preamp);
+			setCustomSuggestions(asCustom);
+			setSuggestionQOverrides({});
+			setSuggestionGainOverrides({});
+			setSuggestionEnabledOverrides({});
+			setRemovedSuggestionKeys(removed);
+			setActiveSavedPresetId(saved.id);
+			setSosOverlayEnabled(false);
+			setPresetStatus(`Loaded preset: ${saved.name}`);
+			setStatus(`Loaded preset: ${saved.name}`, 100);
+		},
+		[computedSuggestions, savedPresets, setStatus],
+	);
+
+	const deleteSavedPreset = useCallback(
+		(id: string) => {
+			persistSavedPresets((prev) => removeSavedPreset(prev, id));
+			if (activeSavedPresetId === id) {
+				setActiveSavedPresetId(null);
+			}
+			setStatus("Preset removed from library.", 100);
+		},
+		[activeSavedPresetId, persistSavedPresets, setStatus],
+	);
+
 	const buildMockPreset = useCallback(
 		(presetId: number, seedSalt: number): MockPreset => {
 			const { inputLabel, outputLabel } = getDeviceLabels();
@@ -1227,7 +1366,7 @@ export function useRoomEq() {
 	);
 
 	const generateMockMeasurement = useCallback(
-		(options: { name: string; presetId: number }) => {
+		(options: { name: string; presetId: number; prefix?: string }) => {
 			const presetId = Math.min(
 				Math.max(1, Math.round(options.presetId)),
 				MOCK_PRESET_COUNT,
@@ -1235,12 +1374,16 @@ export function useRoomEq() {
 			const seedSalt = Date.now() % 100_000;
 			const preset = buildMockPreset(presetId, seedSalt);
 			const customName = options.name.replace(/[\r\n]+/g, " ").trim();
+			const prefix =
+				options.prefix?.trim() ||
+				extractMeasurementPrefix(customName) ||
+				undefined;
 
 			applySessionResults(preset.runs);
-			const saved = saveMeasurementFromRuns(
-				preset.runs,
-				customName || undefined,
-			);
+			const saved = saveMeasurementFromRuns(preset.runs, {
+				name: customName || undefined,
+				prefix,
+			});
 
 			if (saved) {
 				setStatus(`Saved mock: ${saved.name}`, 100);
@@ -1501,14 +1644,20 @@ export function useRoomEq() {
 		setStatus(`Ready for measurement ${sessionRuns.length + 1}`, 0);
 	};
 
-	const handleSessionFinish = async (customName?: string) => {
+	const handleSessionFinish = async (
+		options?: string | { name?: string; prefix?: string },
+	) => {
 		if (!sessionRuns.length) return;
+		const normalized =
+			typeof options === "string"
+				? { name: options }
+				: (options ?? {});
 		await stopSessionMeter();
 		applySessionResults(sessionRuns);
-		const saved = saveMeasurementFromRuns(
-			sessionRuns,
-			customName?.trim() || undefined,
-		);
+		const saved = saveMeasurementFromRuns(sessionRuns, {
+			name: normalized.name?.trim() || undefined,
+			prefix: normalized.prefix?.trim() || undefined,
+		});
 		setSessionOpen(false);
 		setSessionStep("mic-test");
 		setSessionRuns([]);
@@ -1756,6 +1905,11 @@ export function useRoomEq() {
 		saveCurrentMeasurement,
 		loadSavedMeasurement,
 		deleteSavedMeasurement,
+		savedPresets,
+		activeSavedPresetId,
+		savePreset,
+		loadSavedPreset,
+		deleteSavedPreset,
 		chartSeries,
 		visibleChartSeries,
 		isChartSeriesVisible,

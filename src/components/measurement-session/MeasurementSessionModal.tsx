@@ -183,7 +183,12 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
               onStopMeasurement={handleSessionStopMeasurement}
               onRedoMeasurement={handleSessionRedoMeasurement}
               onContinue={handleSessionContinue}
-              onFinish={() => void handleSessionFinish(saveName)}
+              onFinish={() =>
+                void handleSessionFinish({
+                  name: saveName,
+                  prefix: prefixLabel,
+                })
+              }
               onCancel={handleSessionCancel}
             />
           </Dialog.Footer>

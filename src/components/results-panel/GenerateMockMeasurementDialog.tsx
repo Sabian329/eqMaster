@@ -23,7 +23,11 @@ import { MeasurementNameFields } from '../shared';
 export interface GenerateMockMeasurementDialogProps {
   open: boolean;
   onClose: () => void;
-  onGenerate: (options: { name: string; presetId: number }) => void;
+  onGenerate: (options: {
+    name: string;
+    presetId: number;
+    prefix?: string;
+  }) => void;
 }
 
 function composeMockName(
@@ -71,7 +75,7 @@ export function GenerateMockMeasurementDialog({
   const description = getMockPresetDescription(presetId);
 
   const handleGenerate = () => {
-    onGenerate({ name, presetId });
+    onGenerate({ name, presetId, prefix: prefixLabel });
     onClose();
   };
 

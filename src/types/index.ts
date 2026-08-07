@@ -17,13 +17,28 @@ export interface MeasurementRun {
 /** Persisted measurement library entry (web + Electron via localStorage). */
 export interface SavedMeasurement {
   id: string;
-  /** e.g. "40 Hz – 20 kHz · 2026-08-06 15:38" */
+  /** e.g. "Studio · #3 · 40 Hz – 20 kHz · 2026-08-06 15:38" */
   name: string;
+  /** Name prefix chosen at save time, e.g. "Studio". */
+  prefix?: string;
+  /** Monotonic library number shown in names / presets. */
+  measurementNumber?: number;
   savedAt: string;
   meta: MeasurementMeta;
   curve: CurvePoint[];
   runs: MeasurementRun[];
   average: MeasurementRun | null;
+}
+
+/** Persisted EQ preset library entry (web + Electron via localStorage). */
+export interface SavedPreset {
+  id: string;
+  name: string;
+  savedAt: string;
+  preamp: number;
+  text: string;
+  suggestions: Suggestion[];
+  eqAlgorithmVersion?: string;
 }
 
 export interface ChartSeries {

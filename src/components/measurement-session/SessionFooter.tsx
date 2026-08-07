@@ -15,7 +15,9 @@ interface SessionFooterProps {
   onStopMeasurement: RoomEqState['handleSessionStopMeasurement'];
   onRedoMeasurement: RoomEqState['handleSessionRedoMeasurement'];
   onContinue: RoomEqState['handleSessionContinue'];
-  onFinish: (customName?: string) => void | Promise<void>;
+  onFinish: (
+    options?: string | { name?: string; prefix?: string },
+  ) => void | Promise<void>;
   onCancel: RoomEqState['handleSessionCancel'];
 }
 

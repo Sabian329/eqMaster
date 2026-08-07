@@ -12,6 +12,7 @@ import {
   Textarea,
 } from '@chakra-ui/react';
 import { badgeStyles, buttonStyles, fieldStyles, ui } from '../../theme';
+import { SavedPresetsList } from './SavedPresetsList';
 import type { PresetExportCardProps } from './types';
 
 export function PresetExportCard({ state }: PresetExportCardProps) {
@@ -35,6 +36,8 @@ export function PresetExportCard({ state }: PresetExportCardProps) {
       borderColor={ui.colors.border}
       bg={ui.colors.inset}
     >
+      <SavedPresetsList state={state} />
+
       <Heading
         size="sm"
         mb={2}

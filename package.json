@@ -18,7 +18,7 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "dist": "npm run build && electron-builder --mac",
+    "dist": "npm run build && electron-builder --mac && node scripts/copy-dmg-to-desktop.mjs",
     "dist:dir": "npm run build && electron-builder --mac --dir"
   },
   "dependencies": {
