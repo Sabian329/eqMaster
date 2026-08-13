@@ -13,7 +13,12 @@ import {
   type MeasurementAudioFrame,
 } from './measurementAudioVisual';
 import {
-  createAudioConstraints,
+  connectInputChannel,
+  createRecorderTap,
+  openMeasurementInput,
+} from './inputCapture';
+import { detectPossibleLoopback, LOOPBACK_WARNING } from './loopbackDetect';
+import {
   createAudioContext,
   makePinkNoise,
   makeSweep,
@@ -144,6 +149,7 @@ export interface RunMeasurementParams {
   onAudioFrame?: (frame: MeasurementAudioFrame) => void;
   abortSignal?: AbortSignal;
   eqApply?: EqApplyProfile;
+  inputChannelIndex?: number;
 }
 
 export interface RunMeasurementResult {
@@ -170,6 +176,7 @@ export async function runMeasurement(
     onAudioFrame,
     eqApply,
     abortSignal,
+    inputChannelIndex = 0,
   } = params;
   let fMax = params.fMax;
 
@@ -184,21 +191,23 @@ export async function runMeasurement(
   let context: AudioContext | null = null;
   let stream: MediaStream | null = null;
   let micSource: MediaStreamAudioSourceNode | null = null;
+  let inputTap: AudioNode | null = null;
   let recorder: AudioWorkletNode | ScriptProcessorNode | null = null;
+  let recorderTap: AudioNode | null = null;
   let playback: AudioBufferSourceNode | null = null;
   let visualAnalyser: AnalyserNode | null = null;
   let visualRafId = 0;
   let measurementTimer: ReturnType<typeof setInterval> | null = null;
   let stopRecorder: () => void = () => {};
   let unbindAbort: (() => void) | null = null;
+  let capturedChannelCount = 1;
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia(
-      createAudioConstraints(inputDeviceId),
-    );
+    const opened = await openMeasurementInput(inputDeviceId);
+    stream = opened.stream;
+    capturedChannelCount = opened.channelCount;
     throwIfMeasurementAborted(abortSignal);
-    const track = stream.getAudioTracks()[0];
-    const settings = track.getSettings ? track.getSettings() : {};
+    const settings = opened.settings;
 
     context = createAudioContext();
     await setOutputDevice(context, outputDeviceId);
@@ -239,6 +248,7 @@ export async function runMeasurement(
         outputChannelCount: [1],
         channelCount: 1,
         channelCountMode: 'explicit',
+        channelInterpretation: 'discrete',
       });
 
       recorder.port.onmessage = (event: MessageEvent) => {
@@ -250,8 +260,14 @@ export async function runMeasurement(
         }
       };
 
-      micSource.connect(recorder);
-      recorder.connect(context.destination);
+      inputTap = connectInputChannel(
+        micSource,
+        recorder,
+        inputChannelIndex,
+        capturedChannelCount,
+      );
+      recorderTap = createRecorderTap(context);
+      recorder.connect(recorderTap);
           recorder.port.postMessage({ type: 'start' });
           stopRecorder = () => {
             (recorder as AudioWorkletNode).port.postMessage({ type: 'stop' });
@@ -296,8 +312,14 @@ export async function runMeasurement(
       };
 
       recorder = processor;
-      micSource.connect(processor);
-      processor.connect(context.destination);
+      inputTap = connectInputChannel(
+        micSource,
+        processor,
+        inputChannelIndex,
+        capturedChannelCount,
+      );
+      recorderTap = createRecorderTap(context);
+      processor.connect(recorderTap);
 
       stopRecorder = () => {
         recording = false;
@@ -431,6 +453,15 @@ export async function runMeasurement(
       ? await renderSweepWithEq(context.sampleRate, sweepData, channel, eqApply)
       : sweepData;
 
+    const loopback = detectPossibleLoopback({
+      recorded: assembled.data,
+      sweep: analysisSweep,
+      sampleRate: context.sampleRate,
+      sweepOffset,
+      peakDb: stats.peakDb,
+      noiseDb: stats.noiseDb,
+    });
+
     const result = await analyzeInWorker({
       recorded: assembled.data,
       sweep: analysisSweep,
@@ -458,6 +489,9 @@ export async function runMeasurement(
       channel,
       inputLabel,
       outputLabel,
+      inputChannel: inputChannelIndex,
+      inputChannelCount: capturedChannelCount,
+      loopbackWarning: loopback.suspected ? LOOPBACK_WARNING : undefined,
       trackSettings: settings,
       fftSize: result.fftSize,
       calibrationPoints: calibration.length,
@@ -488,12 +522,22 @@ export async function runMeasurement(
       /* ignore */
     }
     try {
+      inputTap?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
       micSource?.disconnect();
     } catch {
       /* ignore */
     }
     try {
       recorder?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
+      recorderTap?.disconnect();
     } catch {
       /* ignore */
     }
@@ -514,6 +558,8 @@ export async function runMeasurement(
 export interface LevelTestOptions {
   levelDb: number;
   channel: ChannelMode;
+  inputChannelIndex?: number;
+  playStimulus?: boolean;
 }
 
 export async function startLevelTest(
@@ -523,26 +569,42 @@ export async function startLevelTest(
   options: LevelTestOptions,
 ): Promise<{
   stop: () => Promise<void>;
+  channelCount: number;
 }> {
-  const stream = await navigator.mediaDevices.getUserMedia(
-    createAudioConstraints(inputDeviceId),
-  );
+  const playStimulus = options.playStimulus !== false;
+  const opened = await openMeasurementInput(inputDeviceId);
+  const stream = opened.stream;
   const context = createAudioContext();
-  await setOutputDevice(context, outputDeviceId);
+  if (playStimulus) {
+    await setOutputDevice(context, outputDeviceId);
+  }
   await context.resume();
 
   const source = context.createMediaStreamSource(stream);
   const analyser = context.createAnalyser();
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.25;
-  source.connect(analyser);
+  analyser.channelCount = 1;
+  analyser.channelCountMode = 'explicit';
+  analyser.channelInterpretation = 'discrete';
+  const inputTap = connectInputChannel(
+    source,
+    analyser,
+    options.inputChannelIndex ?? 0,
+    opened.channelCount,
+  );
+  const analyserTap = createRecorderTap(context);
+  analyser.connect(analyserTap);
 
-  const noiseData = makePinkNoise(context.sampleRate, 2.5, options.levelDb);
-  const playback = context.createBufferSource();
-  playback.buffer = makeSweepBuffer(context, noiseData, options.channel);
-  playback.loop = true;
-  playback.connect(context.destination);
-  playback.start();
+  let playback: AudioBufferSourceNode | null = null;
+  if (playStimulus) {
+    const noiseData = makePinkNoise(context.sampleRate, 2.5, options.levelDb);
+    playback = context.createBufferSource();
+    playback.buffer = makeSweepBuffer(context, noiseData, options.channel);
+    playback.loop = true;
+    playback.connect(context.destination);
+    playback.start();
+  }
 
   const samples = new Float32Array(analyser.fftSize);
   let rafId = 0;
@@ -561,15 +623,21 @@ export async function startLevelTest(
   render();
 
   return {
+    channelCount: opened.channelCount,
     stop: async () => {
       cancelAnimationFrame(rafId);
       try {
-        playback.stop();
+        playback?.stop();
       } catch {
         /* ignore */
       }
       try {
-        playback.disconnect();
+        playback?.disconnect();
+      } catch {
+        /* ignore */
+      }
+      try {
+        inputTap.disconnect();
       } catch {
         /* ignore */
       }
@@ -580,6 +648,11 @@ export async function startLevelTest(
       }
       try {
         analyser.disconnect();
+      } catch {
+        /* ignore */
+      }
+      try {
+        analyserTap.disconnect();
       } catch {
         /* ignore */
       }

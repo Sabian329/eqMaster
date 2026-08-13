@@ -26,6 +26,7 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
     sessionMeterActive,
     sessionMeterDb,
     sessionWarning,
+    uadRoutingHint,
     running,
     statusText,
     progress,
@@ -122,6 +123,7 @@ export function MeasurementSessionModal({ state }: MeasurementSessionModalProps)
                     <MicTestStep
                       sessionMeterActive={sessionMeterActive}
                       sessionMeterDb={sessionMeterDb}
+                      uadRoutingHint={uadRoutingHint}
                       onStartMeter={handleSessionStartMeter}
                       onStopMeter={handleSessionStopMeter}
                     />

@@ -109,19 +109,3 @@ export async function setOutputDevice(
     }
   }
 }
-
-export function createAudioConstraints(deviceId: string): MediaStreamConstraints {
-  const audio: MediaTrackConstraints = {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-    channelCount: { ideal: 1 },
-    sampleRate: { ideal: 48000 },
-  };
-
-  if (deviceId) {
-    audio.deviceId = { exact: deviceId };
-  }
-
-  return { audio };
-}

@@ -6,10 +6,12 @@ import {
 	Stack,
 	Text,
 } from "@chakra-ui/react";
+import { formatInputChannelOption } from "../../../audio/inputCapture";
 import type { ChannelMode } from "../../../types";
 import type { RoomEqState } from "../../../hooks/useRoomEq";
 import { fieldStyles, setupSectionStyles } from "../../../theme";
 import { DeviceActionButtons, FormHelper, FormLabel } from "../../shared";
+import { StatusAlert } from "../../ui/StatusAlert";
 import { CHANNEL_OPTIONS } from "../constants";
 
 interface DeviceSectionProps {
@@ -24,6 +26,10 @@ export function DeviceSection({ state }: DeviceSectionProps) {
 		outputs,
 		inputDeviceId,
 		setInputDeviceId,
+		inputChannelIndex,
+		setInputChannelIndex,
+		inputChannelOptions,
+		uadRoutingHint,
 		outputDeviceId,
 		setOutputDeviceId,
 		channel,
@@ -32,6 +38,8 @@ export function DeviceSection({ state }: DeviceSectionProps) {
 		handleChooseOutput,
 		handleRefreshDevices,
 	} = state;
+
+	const showInputChannels = inputChannelOptions > 1;
 
 	return (
 		<Stack gap={4}>
@@ -47,6 +55,15 @@ export function DeviceSection({ state }: DeviceSectionProps) {
 					onRefreshDevices={handleRefreshDevices}
 				/>
 			</Box>
+
+			{uadRoutingHint ? (
+				<StatusAlert
+					status="warning"
+					size="sm"
+					title="UAD Apollo capture"
+					description={uadRoutingHint}
+				/>
+			) : null}
 
 			<SimpleGrid {...setupSectionStyles.fieldGrid}>
 				<Field.Root>
@@ -68,6 +85,35 @@ export function DeviceSection({ state }: DeviceSectionProps) {
 					</NativeSelect.Root>
 					<FormHelper>Measurement microphone or interface input.</FormHelper>
 				</Field.Root>
+
+				{showInputChannels ? (
+					<Field.Root>
+						<FormLabel>Capture channel</FormLabel>
+						<NativeSelect.Root size="md">
+							<NativeSelect.Field
+								{...fieldStyles.control}
+								value={String(inputChannelIndex)}
+								onChange={(e) =>
+									setInputChannelIndex(Number(e.target.value))
+								}
+							>
+								{Array.from({ length: inputChannelOptions }, (_, channelNumber) => (
+									<option
+										key={`input-channel-${channelNumber + 1}`}
+										value={channelNumber}
+									>
+										{formatInputChannelOption(channelNumber)}
+									</option>
+								))}
+							</NativeSelect.Field>
+						</NativeSelect.Root>
+						<FormHelper>
+							Which channel of the opened input stream to record — not the
+							speaker channel below. Chromium does not name Apollo Mic vs
+							Virtual; tap the mic in Monitor input to find the analog one.
+						</FormHelper>
+					</Field.Root>
+				) : null}
 
 				<Field.Root>
 					<FormLabel>Audio output</FormLabel>
@@ -106,7 +152,8 @@ export function DeviceSection({ state }: DeviceSectionProps) {
 						</NativeSelect.Field>
 					</NativeSelect.Root>
 					<FormHelper>
-						Which speaker channel the sweep excites during this session.
+						Speaker channel the sweep plays through. Separate from Capture
+						channel above.
 					</FormHelper>
 				</Field.Root>
 			</SimpleGrid>

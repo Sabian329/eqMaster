@@ -9,6 +9,10 @@ import {
 import { getActiveEqFilters, hasEqToApply } from "../audio/eqChain";
 import { runMeasurement, startLevelTest } from "../audio/measurement";
 import {
+	clampInputChannelIndex,
+	uadInputRoutingHint,
+} from "../audio/inputCapture";
+import {
 	isMeasurementAbortError,
 	MEASUREMENT_ABORT_MESSAGE,
 } from "../audio/measurementAbort";
@@ -198,6 +202,8 @@ export function useRoomEq() {
 	});
 
 	const [inputDeviceId, setInputDeviceId] = useState("");
+	const [inputChannelIndex, setInputChannelIndex] = useState(0);
+	const [inputChannelCount, setInputChannelCount] = useState(1);
 	const [outputDeviceId, setOutputDeviceId] = useState("");
 	const [channel, setChannel] = useState<ChannelMode>("both");
 	const [fStart, setFStart] = useState(40);
@@ -982,16 +988,48 @@ export function useRoomEq() {
 		[presetName, presetPreamp, suggestions],
 	);
 
+	const selectedInputLabel =
+		inputs.find((d) => d.deviceId === inputDeviceId)?.label ||
+		(inputDeviceId ? "Selected input" : "Default input");
+	const uadRoutingHint = uadInputRoutingHint(selectedInputLabel);
+	const inputChannelOptions = Math.max(1, inputChannelCount);
+
+	const selectInputDevice = useCallback((deviceId: string) => {
+		setInputDeviceId(deviceId);
+		setInputChannelIndex(0);
+		setInputChannelCount(1);
+	}, []);
+
+	const rememberCapturedChannelCount = useCallback((channelCount: number) => {
+		if (!Number.isFinite(channelCount) || channelCount < 1) return;
+		setInputChannelCount(channelCount);
+		setInputChannelIndex((index) =>
+			clampInputChannelIndex(index, channelCount),
+		);
+	}, []);
+
 	const getDeviceLabels = useCallback(() => {
-		const inputLabel =
+		const baseInputLabel =
 			inputs.find((d) => d.deviceId === inputDeviceId)?.label ||
 			"Default input";
+		const inputLabel =
+			inputChannelOptions > 1
+				? `${baseInputLabel} · ch ${inputChannelIndex + 1}`
+				: baseInputLabel;
 		const outputLabel =
 			outputs.find((d) => d.deviceId === outputDeviceId)?.label ||
 			selectedOutputDevice?.label ||
 			"Default output";
 		return { inputLabel, outputLabel };
-	}, [inputs, outputs, inputDeviceId, outputDeviceId, selectedOutputDevice]);
+	}, [
+		inputs,
+		outputs,
+		inputDeviceId,
+		outputDeviceId,
+		selectedOutputDevice,
+		inputChannelIndex,
+		inputChannelOptions,
+	]);
 
 	const executeMeasurement = useCallback(
 		async (
@@ -1000,7 +1038,7 @@ export function useRoomEq() {
 			abortSignal?: AbortSignal,
 		) => {
 			const { inputLabel, outputLabel } = getDeviceLabels();
-			return runMeasurement({
+			const result = await runMeasurement({
 				inputDeviceId,
 				outputDeviceId,
 				channel,
@@ -1015,7 +1053,14 @@ export function useRoomEq() {
 				onStatus,
 				onAudioFrame,
 				abortSignal,
+				inputChannelIndex,
 			});
+			rememberCapturedChannelCount(
+				result.measurementMeta.inputChannelCount ??
+					result.measurementMeta.trackSettings.channelCount ??
+					0,
+			);
+			return result;
 		},
 		[
 			getDeviceLabels,
@@ -1027,6 +1072,8 @@ export function useRoomEq() {
 			duration,
 			smoothing,
 			calibration,
+			inputChannelIndex,
+			rememberCapturedChannelCount,
 		],
 	);
 
@@ -1227,6 +1274,31 @@ export function useRoomEq() {
 		],
 	);
 
+	const deleteSavedMeasurements = useCallback(
+		(ids: string[]) => {
+			const uniqueIds = [...new Set(ids.filter(Boolean))];
+			if (!uniqueIds.length) return;
+
+			const idSet = new Set(uniqueIds);
+			persistSavedMeasurements((prev) =>
+				prev.filter((item) => !idSet.has(item.id)),
+			);
+			if (
+				activeSavedMeasurementId &&
+				idSet.has(activeSavedMeasurementId)
+			) {
+				setActiveSavedMeasurementId(null);
+			}
+			setStatus(
+				uniqueIds.length === 1
+					? "Measurement removed from library."
+					: `Removed ${uniqueIds.length} measurements from library.`,
+				100,
+			);
+		},
+		[activeSavedMeasurementId, persistSavedMeasurements, setStatus],
+	);
+
 	const persistSavedPresets = useCallback(
 		(updater: (prev: SavedPreset[]) => SavedPreset[]) => {
 			setSavedPresets((prev) => {
@@ -1312,6 +1384,28 @@ export function useRoomEq() {
 				setActiveSavedPresetId(null);
 			}
 			setStatus("Preset removed from library.", 100);
+		},
+		[activeSavedPresetId, persistSavedPresets, setStatus],
+	);
+
+	const deleteSavedPresets = useCallback(
+		(ids: string[]) => {
+			const uniqueIds = [...new Set(ids.filter(Boolean))];
+			if (!uniqueIds.length) return;
+
+			const idSet = new Set(uniqueIds);
+			persistSavedPresets((prev) =>
+				prev.filter((item) => !idSet.has(item.id)),
+			);
+			if (activeSavedPresetId && idSet.has(activeSavedPresetId)) {
+				setActiveSavedPresetId(null);
+			}
+			setStatus(
+				uniqueIds.length === 1
+					? "Preset removed from library."
+					: `Removed ${uniqueIds.length} presets from library.`,
+				100,
+			);
 		},
 		[activeSavedPresetId, persistSavedPresets, setStatus],
 	);
@@ -1468,9 +1562,13 @@ export function useRoomEq() {
 		}
 	};
 
-	const handleStartMeter = async () => {
+	const handleStartMeter = async (options?: { playStimulus?: boolean }) => {
+		const playStimulus = options?.playStimulus !== false;
 		await levelTestRef.current?.stop();
-		setStatus("Starting level check…", 0);
+		setStatus(
+			playStimulus ? "Starting level check…" : "Starting input monitor…",
+			0,
+		);
 		const session = await startLevelTest(
 			inputDeviceId,
 			outputDeviceId,
@@ -1478,12 +1576,17 @@ export function useRoomEq() {
 			{
 				levelDb: SWEEP_LEVEL_DB,
 				channel,
+				inputChannelIndex,
+				playStimulus,
 			},
 		);
+		rememberCapturedChannelCount(session.channelCount);
 		levelTestRef.current = session;
 		setMeterActive(true);
 		setStatus(
-			`Pink noise is playing at sweep level — adjust output volume and mic gain. Aim for the green zone (${meterOptimalRangeLabel()}).`,
+			playStimulus
+				? `Pink noise is playing at sweep level — adjust output volume and mic gain. Aim for the green zone (${meterOptimalRangeLabel()}).`
+				: "Input monitor is live — no playback. Tap the microphone; the meter should move. If speakers move it instead, the capture is likely loopback.",
 			0,
 		);
 	};
@@ -1521,7 +1624,10 @@ export function useRoomEq() {
 		setSessionWarning(null);
 	};
 
-	const handleSessionStartMeter = async () => {
+	const handleSessionStartMeter = async (options?: {
+		playStimulus?: boolean;
+	}) => {
+		const playStimulus = options?.playStimulus === true;
 		setSessionWarning(null);
 		try {
 			await sessionMeterRef.current?.stop();
@@ -1532,8 +1638,11 @@ export function useRoomEq() {
 				{
 					levelDb: SWEEP_LEVEL_DB,
 					channel,
+					inputChannelIndex,
+					playStimulus,
 				},
 			);
+			rememberCapturedChannelCount(session.channelCount);
 			sessionMeterRef.current = session;
 			setSessionMeterActive(true);
 		} catch (error) {
@@ -1605,6 +1714,9 @@ export function useRoomEq() {
 				setSessionRuns((previous) => [...previous, run]);
 			}
 			setSessionStep("run-complete");
+			if (result.measurementMeta.loopbackWarning) {
+				setSessionWarning(result.measurementMeta.loopbackWarning);
+			}
 			setStatus(
 				replacingRunIndex
 					? `Measurement ${runIndex} replaced`
@@ -1717,6 +1829,7 @@ export function useRoomEq() {
 				outputLabel,
 				onStatus: setStatus,
 				eqApply,
+				inputChannelIndex,
 			});
 			setVerificationCurve(result.curve);
 			setVerificationMeta(result.measurementMeta);
@@ -1748,6 +1861,7 @@ export function useRoomEq() {
 		calibration,
 		setStatus,
 		handleStopMeter,
+		inputChannelIndex,
 	]);
 
 	const exportCsv = () => {
@@ -1840,7 +1954,11 @@ export function useRoomEq() {
 		inputs,
 		outputs,
 		inputDeviceId,
-		setInputDeviceId,
+		setInputDeviceId: selectInputDevice,
+		inputChannelIndex,
+		setInputChannelIndex,
+		inputChannelOptions,
+		uadRoutingHint,
 		outputDeviceId,
 		setOutputDeviceId,
 		channel,
@@ -1905,11 +2023,13 @@ export function useRoomEq() {
 		saveCurrentMeasurement,
 		loadSavedMeasurement,
 		deleteSavedMeasurement,
+		deleteSavedMeasurements,
 		savedPresets,
 		activeSavedPresetId,
 		savePreset,
 		loadSavedPreset,
 		deleteSavedPreset,
+		deleteSavedPresets,
 		chartSeries,
 		visibleChartSeries,
 		isChartSeriesVisible,

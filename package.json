@@ -1,75 +1,75 @@
 {
-  "name": "room-eq-measure",
-  "productName": "Room EQ Measure",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "main": "dist-electron/main.cjs",
-  "author": "Room EQ Measure",
-  "description": "Speaker and room frequency response measurement",
-  "scripts": {
-    "dev": "vite",
-    "dev:electron": "npm run build:electron && env -u ELECTRON_RUN_AS_NODE node scripts/dev-electron.mjs",
-    "build:renderer": "tsc -b && vite build",
-    "build:electron": "tsc -p tsconfig.electron.json && node scripts/rename-electron.cjs",
-    "build": "npm run build:renderer && npm run build:electron",
-    "lint": "oxlint",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "preview": "vite preview",
-    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "dist": "npm run build && electron-builder --mac && node scripts/copy-dmg-to-desktop.mjs",
-    "dist:dir": "npm run build && electron-builder --mac --dir"
-  },
-  "dependencies": {
-    "@chakra-ui/react": "^3.36.1",
-    "@emotion/react": "^11.14.0",
-    "ogl": "^1.0.11",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.4",
-    "electron": "^36.2.0",
-    "electron-builder": "^24.13.3",
-    "oxlint": "^1.75.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.2.0",
-    "vitest": "^3.2.7",
-    "wait-on": "^8.0.3"
-  },
-  "build": {
-    "appId": "com.roomeq.measure",
-    "productName": "Room EQ Measure",
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "package.json"
-    ],
-    "asar": true,
-    "mac": {
-      "category": "public.app-category.music",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "hardenedRuntime": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "extendInfo": {
-        "NSMicrophoneUsageDescription": "Room EQ Measure needs microphone access to record the room's acoustic response during sweep measurements."
-      },
-      "identity": null
-    },
-    "dmg": {
-      "title": "Room EQ Measure"
-    }
-  }
+	"name": "room-eq-measure",
+	"productName": "Room EQ Measure 2.0",
+	"private": true,
+	"version": "2.0.0",
+	"type": "module",
+	"main": "dist-electron/main.cjs",
+	"author": "Room EQ Measure 2.0",
+	"description": "Speaker and room frequency response measurement",
+	"scripts": {
+		"dev": "vite",
+		"dev:electron": "npm run build:electron && env -u ELECTRON_RUN_AS_NODE node scripts/dev-electron.mjs",
+		"build:renderer": "tsc -b && vite build",
+		"build:electron": "tsc -p tsconfig.electron.json && node scripts/rename-electron.cjs",
+		"build": "npm run build:renderer && npm run build:electron",
+		"lint": "oxlint",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"preview": "vite preview",
+		"start": "env -u ELECTRON_RUN_AS_NODE electron .",
+		"dist": "npm run build && electron-builder --mac && node scripts/copy-dmg-to-desktop.mjs",
+		"dist:dir": "npm run build && electron-builder --mac --dir"
+	},
+	"dependencies": {
+		"@chakra-ui/react": "^3.36.1",
+		"@emotion/react": "^11.14.0",
+		"ogl": "^1.0.11",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8"
+	},
+	"devDependencies": {
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"electron": "^36.2.0",
+		"electron-builder": "^24.13.3",
+		"oxlint": "^1.75.0",
+		"typescript": "~6.0.2",
+		"vite": "^8.2.0",
+		"vitest": "^3.2.7",
+		"wait-on": "^8.0.3"
+	},
+	"build": {
+		"appId": "com.roomeq.measure",
+		"productName": "Room EQ Measure 2.0",
+		"directories": {
+			"output": "release",
+			"buildResources": "build"
+		},
+		"files": [
+			"dist/**/*",
+			"dist-electron/**/*",
+			"package.json"
+		],
+		"asar": true,
+		"mac": {
+			"category": "public.app-category.music",
+			"target": [
+				"dmg",
+				"zip"
+			],
+			"hardenedRuntime": true,
+			"entitlements": "build/entitlements.mac.plist",
+			"entitlementsInherit": "build/entitlements.mac.plist",
+			"extendInfo": {
+				"NSMicrophoneUsageDescription": "Room EQ Measure 2.0 needs microphone access to record the room's acoustic response during sweep measurements."
+			},
+			"identity": null
+		},
+		"dmg": {
+			"title": "Room EQ Measure 2.0"
+		}
+	}
 }

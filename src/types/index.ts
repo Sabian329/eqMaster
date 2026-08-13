@@ -99,6 +99,9 @@ export interface MeasurementMeta {
   channel: ChannelMode;
   inputLabel: string;
   outputLabel: string;
+  inputChannel?: number;
+  inputChannelCount?: number;
+  loopbackWarning?: string;
   trackSettings: MediaTrackSettings;
   fftSize: number;
   calibrationPoints: number;

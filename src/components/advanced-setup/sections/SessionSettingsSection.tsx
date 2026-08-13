@@ -101,22 +101,41 @@ export function CalibrationLevelSection({
 							letterSpacing="0.04em"
 							textTransform="uppercase"
 						>
-							Pre-measurement level check
+							Input monitor
 						</Text>
 						<Text fontSize="2xs" color={ui.colors.textMuted} lineHeight="1.55">
-							Pink noise at sweep level with live mic meter. Aim for the green
-							zone ({meterOptimalRangeLabel()}).
+							Monitor the selected capture with no playback, or play pink noise
+							to set gain ({meterOptimalRangeLabel()}). Tap the mic — the meter
+							should move.
 						</Text>
 					</Stack>
 					{!meterActive ? (
-						<Button
-							size="sm"
-							borderRadius="2px"
-							{...buttonStyles.secondary}
-							onClick={() => handleStartMeter().catch((e) => alert(e.message))}
-						>
-							Start level check
-						</Button>
+						<Stack gap={2}>
+							<Button
+								size="sm"
+								borderRadius="2px"
+								{...buttonStyles.secondary}
+								onClick={() =>
+									handleStartMeter({ playStimulus: false }).catch((e) =>
+										alert(e.message),
+									)
+								}
+							>
+								Monitor input
+							</Button>
+							<Button
+								size="sm"
+								borderRadius="2px"
+								{...buttonStyles.secondary}
+								onClick={() =>
+									handleStartMeter({ playStimulus: true }).catch((e) =>
+										alert(e.message),
+									)
+								}
+							>
+								Level check with pink noise
+							</Button>
+						</Stack>
 					) : (
 						<Button
 							size="sm"

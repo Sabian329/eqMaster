@@ -1,4 +1,5 @@
 import type { SelectedOutputDevice } from '../types';
+import { createRawAudioConstraints } from './inputCapture';
 
 export function isAliasDeviceId(deviceId: string): boolean {
   return !deviceId || deviceId === 'default' || deviceId === 'communications';
@@ -50,14 +51,9 @@ export async function requestMicrophonePermission(): Promise<void> {
     throw new Error('The browser does not provide microphone access.');
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      channelCount: { ideal: 1 },
-    },
-  });
+  const stream = await navigator.mediaDevices.getUserMedia(
+    createRawAudioConstraints(''),
+  );
 
   try {
     await enumerateAudioDevices();

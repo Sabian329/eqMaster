@@ -15,7 +15,7 @@ export function formatFrequency(value: number): string {
 export const METER_DB_MIN = -60;
 export const METER_DB_MAX = 0;
 /** Mic peak window for a reliable sweep — quiet rooms OK, leave headroom before clip. */
-export const METER_OPTIMAL_MIN_DB = -24;
+export const METER_OPTIMAL_MIN_DB = -30;
 export const METER_OPTIMAL_MAX_DB = -6;
 
 export function meterOptimalRangeLabel(): string {
